@@ -1,0 +1,23 @@
+learning_rate: 0.005
+epochs: 500
+batch_size: 32
+train_split: 0.8
+test_split: 0.2
+seed: 42
+run_test: false
+save_interval: 50
+model: "sage"
+
+embedding_dim: 512
+hidden_dim: 728
+
+checkpoint_dir: "./checkpoints"
+run_name: "experiment_01"
+project_name: "te-classification"
+
+species: "mus"
+k_mers: 3
+fam_type: "Novo"
+
+recreate_dataset: False
+number_datasets: 2
