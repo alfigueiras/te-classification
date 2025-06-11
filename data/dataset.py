@@ -38,7 +38,7 @@ def create_dataset(config):
 
     edge_path=f"data/raw/unitig_{config['species']}.edges"
 
-    zero_column=config['species'].name=='mouse'
+    zero_column=config['species']=='mouse'
 
     G=create_digraph_new(node_path, edge_path, add_in_superbubble_atr=True, zero_column=zero_column, kmers=config['k_mers'], disable_tqdm=True)
     G.remove_nodes_from(list(nx.isolates(G)))
@@ -47,8 +47,6 @@ def create_dataset(config):
     undirected_G=nx.Graph()
     undirected_G.add_nodes_from(G.nodes(data=True))
     undirected_G.add_edges_from(G.edges())
-
-    os.makedirs("data/processed", exist_ok=True)
 
     pickle.dump(undirected_G, open(f"data/processed/graph_{config['species']}{config['kmers']}{config['fam_type']}.pickle", 'wb'))
 

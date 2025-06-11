@@ -12,15 +12,17 @@ def main():
     config=get_config()
     init_wandb(project_name=config['project_name'], config_dict=config, run_name=config.get('run_name', None))
 
-    processed_file=f"data/processed/{config['species']}{config['kmers']}{config['fam_type']}.pt"
+    processed_file=f"{config['species']}{config['k_mers']}{config['fam_type']}.pt"
+
+    os.makedirs("data/processed", exist_ok=True)
 
     if processed_file not in os.listdir("data/processed") or config["recreate_dataset"]:
         print(f"Creating dataset...")
-        dataset,G=create_dataset(config['species'], config['kmers'], config['fam_type'])
+        dataset,G=create_dataset(config)
     else:
         print("Found processed dataset, loading...")
-        dataset=torch.load(processed_file)
-        G=pickle.load(open(f"data/processed/graph_{config['species']}{config['kmers']}{config['fam_type']}.pickle", 'rb'))
+        dataset=torch.load(f"data/processed/{processed_file}")
+        G=pickle.load(open(f"data/processed/graph_{config['species']}{config['k_mers']}{config['fam_type']}.pickle", 'rb'))
 
     mask=dataset_split_by_components(G, dataset, config)
 

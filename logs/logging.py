@@ -17,7 +17,6 @@ def log_confusion_matrix(y_true, y_pred, split="train"):
             probs=None,
             y_true=y_true,
             preds=y_pred,
-            class_names=[str(i) for i in range(1,10)]
         )
     })
 
