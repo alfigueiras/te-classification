@@ -20,8 +20,11 @@ def main():
         dataset=torch.load(processed_file)
         G=pickle.load(open(f"data/processed/graph_{config['species']}{config['kmers']}{config['fam_type']}.pickle", 'rb'))
 
-    masks=dataset_split_by_components(G, dataset, number_datasets=config["number_datasets"])
-    
+    mask=dataset_split_by_components(G, dataset, number_datasets=config["number_datasets"])
+
+    dataset.train_mask = mask[0]
+    dataset.test_mask = mask[1]
+
     finish_wandb()
 
 if __name__ == "__main__":

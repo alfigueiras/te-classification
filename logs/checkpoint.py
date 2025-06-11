@@ -18,29 +18,27 @@ def save_best(best_epoch, epoch, model, best_val, current_val, path, name="model
 
     return best_epoch, best_val
 
-def filter_counter_by_keys(te_counts, masks):
+def filter_counter_by_keys(te_counts, mask):
     artifact = wandb.Artifact(name=f"family_counters", type="family-counters")
 
-    for i, mask in enumerate(masks):
-        train_counter = Counter({key: te_counts[key] for key in mask[2]})
-        test_counter = Counter({key: te_counts[key] for key in mask[3]})
+    train_counter = Counter({key: te_counts[key] for key in mask[2]})
+    test_counter = Counter({key: te_counts[key] for key in mask[3]})
 
-        combined = {
-            "train_families": dict(train_counter.most_common()),
-            "test_families": dict(test_counter.most_common())
-        }
+    combined = {
+        "train_families": dict(train_counter.most_common()),
+        "test_families": dict(test_counter.most_common())
+    }
 
-        # Save to temp file
-        file_name = f"family_counter{i+1}.json"
-        with open(file_name, "w") as f:
-            json.dump(combined, f, indent=2)
+    # Save to temp file
+    file_name = f"family_counter.json"
+    with open(file_name, "w") as f:
+        json.dump(combined, f, indent=2)
 
-        # Add to artifact
-        artifact.add_file(file_name)
+    # Add to artifact
+    artifact.add_file(file_name)
 
     # Log the artifact to W&B
     wandb.log_artifact(artifact)
 
     # Optionally: clean up temp files
-    for i in range(len(masks)):
-        os.remove(f"family_counter{i+1}.json")
+    os.remove(f"family_counter.json")

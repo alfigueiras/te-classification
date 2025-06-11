@@ -100,7 +100,7 @@ def standardize_selected_columns(data, columns_to_standardize):
     data.x = x  # Update the node feature matrix
     return data
 
-def dataset_split_by_components(G: nx.Graph, data_full, number_datasets=1):
+def dataset_split_by_components(G: nx.Graph, data_full):
     """
     Splits the graph into train and test datasets, separating families between them. All the nodes of a family are in the same dataset.
     """
@@ -130,7 +130,6 @@ def dataset_split_by_components(G: nx.Graph, data_full, number_datasets=1):
     # Attributes each node of the original graph to a component or as a node without family
     component_nodes = defaultdict(set)
     nodes_no_family = []
-    masks=[]
 
     nodes_w_fam=0
     for node, data in G.nodes(data=True):
@@ -147,69 +146,66 @@ def dataset_split_by_components(G: nx.Graph, data_full, number_datasets=1):
     total_nodes = len(G.nodes)
     target_nodes_w_fam_in_test = int(0.2 * nodes_w_fam)
 
-    for i in range(number_datasets):
-        print(f"\nDataset {i + 1}:")
+    train_nodes = set()
+    test_nodes = set()
+    train_fams=set()
+    test_fams=set()
 
-        train_nodes = set()
-        test_nodes = set()
-        train_fams=set()
-        test_fams=set()
+    # Nodes belonging to families
+    components = list(component_nodes.keys())
+    random.shuffle(components)
 
-        # Nodes belonging to families
-        components = list(component_nodes.keys())
-        random.shuffle(components)
+    for comp in components:
+        fam_nodes = component_nodes[comp]
 
-        for comp in components:
-            fam_nodes = component_nodes[comp]
+        # Only add family if it fits into the target test size
+        if len(test_nodes) + len(fam_nodes) <= target_nodes_w_fam_in_test:
+            test_nodes.update(fam_nodes)
+            test_fams.update(family_conn_components[comp])
+        else:
+            train_nodes.update(fam_nodes)
+            train_fams.update(family_conn_components[comp])
 
-            # Only add family if it fits into the target test size
-            if len(test_nodes) + len(fam_nodes) <= target_nodes_w_fam_in_test:
-                test_nodes.update(fam_nodes)
-                test_fams.update(family_conn_components[comp])
-            else:
-                train_nodes.update(fam_nodes)
-                train_fams.update(family_conn_components[comp])
+    # Nodes with no family split
+    random.shuffle(nodes_no_family)
 
-        # Nodes with no family split
-        random.shuffle(nodes_no_family)
+    # Number of nodes with no family in the test set
+    # We want to have 20% of the total nodes in the test set, so we need to add some nodes with no family, 20% total minus the one we already have
+    num_no_family_test = int(total_nodes*0.2) - len(test_nodes)
 
-        # Number of nodes with no family in the test set
-        # We want to have 20% of the total nodes in the test set, so we need to add some nodes with no family, 20% total minus the one we already have
-        num_no_family_test = int(total_nodes*0.2) - len(test_nodes)
+    train_nodes.update(nodes_no_family[num_no_family_test:])
+    test_nodes.update(nodes_no_family[:num_no_family_test])
+    
+    print(f"Number of nodes in train set: {len(train_nodes)}")
+    print(f"Number of nodes in test set: {len(test_nodes)}")
 
-        train_nodes.update(nodes_no_family[num_no_family_test:])
-        test_nodes.update(nodes_no_family[:num_no_family_test])
-        
-        print(f"Number of nodes in train set: {len(train_nodes)}")
-        print(f"Number of nodes in test set: {len(test_nodes)}")
+    train_total = len(train_nodes)
+    test_total = len(test_nodes)
 
-        train_total = len(train_nodes)
-        test_total = len(test_nodes)
+    train_with_family = count_nodes_with_families(G, train_nodes)
+    test_with_family = count_nodes_with_families(G, test_nodes)
 
-        train_with_family = count_nodes_with_families(G, train_nodes)
-        test_with_family = count_nodes_with_families(G, test_nodes)
+    train_family_pct = 100 * train_with_family / train_total
+    test_family_pct = 100 * test_with_family / test_total
 
-        train_family_pct = 100 * train_with_family / train_total
-        test_family_pct = 100 * test_with_family / test_total
+    print(f"Train set: {train_with_family}/{train_total} nodes ({train_family_pct:.2f}% with TE families)")
+    print(f"Test set: {test_with_family}/{test_total} nodes ({test_family_pct:.2f}% with TE families)")
 
-        print(f"Train set: {train_with_family}/{train_total} nodes ({train_family_pct:.2f}% with TE families)")
-        print(f"Test set: {test_with_family}/{test_total} nodes ({test_family_pct:.2f}% with TE families)")
+    node_id_map = {node: i for i, node in enumerate(G.nodes())}
+    num_nodes = data_full.num_nodes
 
-        node_id_map = {node: i for i, node in enumerate(G.nodes())}
-        num_nodes = data_full.num_nodes
+    train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    test_mask = torch.zeros(num_nodes, dtype=torch.bool)
 
-        train_mask = torch.zeros(num_nodes, dtype=torch.bool)
-        test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    for node in train_nodes:
+        train_mask[node_id_map[node]] = True
+    for node in test_nodes:
+        test_mask[node_id_map[node]] = True
 
-        for node in train_nodes:
-            train_mask[node_id_map[node]] = True
-        for node in test_nodes:
-            test_mask[node_id_map[node]] = True
+    mask=(train_mask, test_mask, train_fams, test_fams)
 
-        masks.append((train_mask, test_mask, train_fams, test_fams))
-
-    filter_counter_by_keys(transposable_e, masks)
-    return masks
+    filter_counter_by_keys(transposable_e, mask)
+    return mask
 
 def count_nodes_with_families(G, nodes_subset):
     count = 0
