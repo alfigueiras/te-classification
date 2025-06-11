@@ -6,16 +6,20 @@ test_split: 0.2
 seed: 42
 run_test: false
 save_interval: 50
-model: "sage"
 
+model: "sage" # GAT/GATv2/GraphTransformer
 embedding_dim: 512
 hidden_dim: 728
+heads: 4
+dropout_p: 0.4
+edge_dropout_p: 0.2
+num_layers: 2
 
 checkpoint_dir: "./checkpoints"
 run_name: "experiment_01"
 project_name: "te-classification"
 
-species: "mouse"    # mouse/dog/dro
+species: "mouse"  # mouse/dog/dro
 k_mers: 3         # 0/3/4/5 
 fam_type: "Novo"  # "Novo"/""
 
