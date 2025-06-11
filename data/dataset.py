@@ -48,14 +48,14 @@ def create_dataset(config):
     undirected_G.add_nodes_from(G.nodes(data=True))
     undirected_G.add_edges_from(G.edges())
 
-    pickle.dump(undirected_G, open(f"data/processed/graph_{config['species']}{config['kmers']}{config['fam_type']}.pickle", 'wb'))
+    pickle.dump(undirected_G, open(f"data/processed/graph_{config['species']}{str(config['k_mers'])}{config['fam_type']}.pickle", 'wb'))
 
     print(f"Number of nodes: {undirected_G.number_of_nodes()}")
     print(f"Creating torch dataset.")
 
     # Create torch dataset and masks for training and testing
-    dataset=data_to_torch(undirected_G, config['kmers'])
-    torch.save(dataset, f"data/processed/{config['species']}{config['kmers']}{config['fam_type']}.pt")
+    dataset=data_to_torch(undirected_G, config['k_mers'])
+    torch.save(dataset, f"data/processed/{config['species']}{str(config['k_mers'])}{config['fam_type']}.pt")
 
     return dataset, undirected_G
 

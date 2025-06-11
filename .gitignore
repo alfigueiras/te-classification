@@ -3,3 +3,5 @@ wandb
 
 *.nodes
 *.edges
+*.pickle
+*.pt

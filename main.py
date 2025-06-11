@@ -30,7 +30,7 @@ def main():
     dataset.test_mask = mask[1]
 
     world_size = torch.cuda.device_count()
-    mp.spawn(train, args=(world_size, dataset), nprocs=world_size, join=True)
+    mp.spawn(train, args=(world_size, dataset, config), nprocs=world_size, join=True)
 
     finish_wandb()
 

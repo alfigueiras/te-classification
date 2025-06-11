@@ -1,6 +1,6 @@
 import networkx as nx
 import itertools
-import tqdm
+from tqdm import tqdm
 import re
 
 def create_digraph_new(nodes_path="", edges_path="", add_in_superbubble_atr=False, zero_column=True, kmers=0, disable_tqdm=False):
