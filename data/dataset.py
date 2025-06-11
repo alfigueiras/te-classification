@@ -13,8 +13,30 @@ from torch_geometric.utils import from_networkx
 from collections import Counter, defaultdict
 
 def create_dataset(config):
-    node_path=""
-    edge_path=""
+
+    if config['species'] == "mouse":
+        if config['k_mers'] == 0 and config['fam_type'] == '':
+            node_path=f"data/raw/unitig_annotated_mouse.nodes"
+        elif config['k_mers'] == 0 and config['fam_type'] == 'Novo':
+            node_path=f"data/raw/OutNovoMouse.nodes"
+        else:
+            node_path=f"data/raw/Out{str(config['k_mers'])}Mers{config['fam_type']}.nodes"
+    elif config['species'] == "dog":
+        if config['k_mers'] == 0 and config['fam_type'] == '':
+            node_path=f"data/raw/unitig_annotated_dog.nodes"
+        elif config['k_mers'] == 0 and config['fam_type'] == 'Novo':
+            node_path=f"data/raw/OutNovoDog.nodes"
+        else:
+            node_path=f"data/raw/Out{str(config['k_mers'])}Mers{config['fam_type']}Dog.nodes"
+    elif config['species'] == "dro":
+        if config['k_mers'] == 0 and config['fam_type'] == '':
+            node_path=f"data/raw/unitig_annotated_dro.nodes"
+        elif config['k_mers'] == 0 and config['fam_type'] == 'Novo':
+            node_path=f"data/raw/OutNovoDRO.nodes"
+        else:
+            node_path=f"data/raw/Out{str(config['k_mers'])}Mers{config['fam_type']}DRO.nodes"
+
+    edge_path=f"data/raw/unitig_{config['species']}.edges"
 
     zero_column=config['species'].name=='mouse'
 
@@ -26,7 +48,9 @@ def create_dataset(config):
     undirected_G.add_nodes_from(G.nodes(data=True))
     undirected_G.add_edges_from(G.edges())
 
-    pickle.dump(undirected_G, open(f"data/processed/{config['species']}{config['kmers']}{config['fam_type']}.pickle", 'wb'))
+    os.makedirs("data/processed", exist_ok=True)
+
+    pickle.dump(undirected_G, open(f"data/processed/graph_{config['species']}{config['kmers']}{config['fam_type']}.pickle", 'wb'))
 
     print(f"Number of nodes: {undirected_G.number_of_nodes()}")
     print(f"Creating torch dataset.")

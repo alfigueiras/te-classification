@@ -18,7 +18,7 @@ def main():
     else:
         print("Found processed dataset, loading...")
         dataset=torch.load(processed_file)
-        G=pickle.load(open(f"data/processed/{config['species']}{config['kmers']}{config['fam_type']}.pickle", 'rb'))
+        G=pickle.load(open(f"data/processed/graph_{config['species']}{config['kmers']}{config['fam_type']}.pickle", 'rb'))
 
     masks=dataset_split_by_components(G, dataset, number_datasets=config["number_datasets"])
     finish_wandb()

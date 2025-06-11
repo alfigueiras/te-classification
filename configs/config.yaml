@@ -15,9 +15,9 @@ checkpoint_dir: "./checkpoints"
 run_name: "experiment_01"
 project_name: "te-classification"
 
-species: "mus"
-k_mers: 3
-fam_type: "Novo"
+species: "mouse"    # mouse/dog/dro
+k_mers: 3         # 0/3/4/5 
+fam_type: "Novo"  # "Novo"/""
 
 recreate_dataset: False
 number_datasets: 2
