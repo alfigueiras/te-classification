@@ -10,6 +10,7 @@ import numpy as np
 import networkx as nx
 
 from torch_geometric.utils import from_networkx
+from torch_geometric.data import Data
 from collections import Counter, defaultdict
 
 def create_dataset(config):
@@ -69,16 +70,16 @@ def data_to_torch(undirected_G, k_mers):
             
     g_node_attrs.append('is_dfam')
 
-    data = from_networkx(undirected_G, group_node_attrs=g_node_attrs)
+    dataset = from_networkx(undirected_G, group_node_attrs=g_node_attrs)
 
-    dataset = data.clone()
-    dataset.y = data.x[:, -1].to(torch.float32)
-    dataset.x = data.x[:, :-1]
-    dataset.x = dataset.x.to(torch.float32)
+    y = dataset.x[:, -1].to(torch.float32)
+    x = dataset.x[:, :-1].to(torch.float32)
 
     columns_to_standardize = [0, 2]
 
-    dataset=standardize_selected_columns(dataset, columns_to_standardize)
+    dataset = Data(x=x, y=y, edge_index=dataset.edge_index)
+
+    x=standardize_selected_columns(dataset, columns_to_standardize)
 
     return dataset    
 
@@ -98,7 +99,7 @@ def standardize_selected_columns(data, columns_to_standardize):
     data.x = x  # Update the node feature matrix
     return data
 
-def dataset_split_by_components(G: nx.Graph, data_full, config):
+def dataset_split_by_components(G: nx.Graph, data_full, config, run):
     """
     Splits the graph into train and test datasets, separating families between them. All the nodes of a family are in the same dataset.
     """
@@ -202,7 +203,7 @@ def dataset_split_by_components(G: nx.Graph, data_full, config):
 
     mask=(train_mask, test_mask, train_fams, test_fams)
 
-    filter_counter_by_keys(transposable_e, mask)
+    filter_counter_by_keys(run, transposable_e, mask)
     return mask
 
 def count_nodes_with_families(G, nodes_subset):

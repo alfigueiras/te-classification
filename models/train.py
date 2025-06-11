@@ -3,16 +3,16 @@ from logs.logging import log_metrics, log_confusion_matrix
 from models.att_models import GAT_Kmer_Classifier, GATv2Conv_Kmer_Classifier, GraphTransformer_Kmer_Classifier 
 from models.loss import FocalLoss
 
-from torch import nn,optim
-from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
-
 import torch
 import torch.distributed as dist
+import os
 
+from torch import nn,optim
+from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch_geometric.loader import NeighborLoader
 
-def train(rank, world_size, dataset, config):
+def train(rank, world_size, dataset, config, run):
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
     torch.cuda.set_device(rank)
 
@@ -20,11 +20,11 @@ def train(rank, world_size, dataset, config):
 
     # Model initialization
     if config['model'] == 'GAT':
-        model = GAT_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'])
+        model = GAT_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p']).to(device)
     elif config['model'] == 'GATv2':
-        model = GATv2Conv_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers'])
+        model = GATv2Conv_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers']).to(device)
     elif config['model'] == 'GraphTransformer':
-        model = GraphTransformer_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers'])
+        model = GraphTransformer_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers']).to(device)
     else:
         raise ValueError(f"Unknown model type: {config['model']}")
     
@@ -41,7 +41,7 @@ def train(rank, world_size, dataset, config):
     )
 
     val_sampler = torch.utils.data.distributed.DistributedSampler(
-        dataset.val_mask.nonzero(as_tuple=True)[0],
+        dataset.test_mask.nonzero(as_tuple=True)[0],
         num_replicas=world_size,
         rank=rank,
         shuffle=False,
@@ -64,25 +64,27 @@ def train(rank, world_size, dataset, config):
     best_f1=0
     best_epoch = 0
 
-    while epoch <= config['num_epochs']:
-        train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device, config)
-        metrics = test_gnn_epoch(model, test_loader, device)
-        if epoch % config['log_interval'] == 0 and rank == 0:
-            save_checkpoint(epoch, model, "results", config['model'])
-        if metrics['test_f1'] > best_f1:
-            best_epoch, best_f1 = save_best(best_epoch, epoch, model, best_f1, metrics['test_f1'], "results", config['model'])
+    os.makedirs("results", exist_ok=True)
+
+    while epoch <= config['epochs']:
+        train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device, run)
+        metrics = test_gnn_epoch(epoch, model, test_loader, criterion, device, run)
+        if epoch % config['save_interval'] == 0 and rank == 0:
+            save_checkpoint(run, epoch, model, "results", config['model'])
+        if metrics['test/f1'] > best_f1:
+            best_epoch, best_f1 = save_best(run, best_epoch, epoch, model, best_f1, metrics['test/f1'], "results", config['model'])
         
         epoch += 1
 
     dist.destroy_process_group()
     print(f"Best test F1 score: {best_f1:.4f} at epoch {best_epoch}")
     
-def train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device, config):
+def train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device, run):
     model.train()
     total_loss = 0
-    all_probs = []
-    all_preds = []
-    all_targets = []
+    all_probs = torch.empty(0)
+    all_preds = torch.empty(0)
+    all_targets = torch.empty(0)
 
     for batch in train_loader:
         optimizer.zero_grad()
@@ -91,17 +93,18 @@ def train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device, co
         logits = model(batch.x, batch.edge_index)
         logits = logits.squeeze(-1)
 
-        loss = criterion(logits[batch.batch_size:], batch.y[batch.batch_size:]) # ?
+        loss = criterion(logits[:batch.batch_size], batch.y[:batch.batch_size])
         loss.backward()
         optimizer.step()
 
-        probs = torch.sigmoid(logits)
+        probs = torch.sigmoid(logits[:batch.batch_size])
         predictions = (probs>=0.5).long()
-        targets = batch.y[batch.batch_size:]
+        targets = batch.y[:batch.batch_size]
 
-        all_probs.append(probs.cpu())
-        all_preds.append(predictions.cpu())
-        all_targets.append(targets.cpu())
+        all_probs = torch.cat([all_probs, probs.detach().cpu()])
+        all_preds = torch.cat([all_preds, predictions.detach().cpu()])
+        all_targets = torch.cat([all_targets, targets.detach().cpu()])
+
         total_loss += loss.item()
 
     avg_loss = total_loss / len(train_loader)
@@ -109,15 +112,16 @@ def train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device, co
     all_probs, all_preds, all_targets, avg_loss = gather_all_predictions(all_probs, all_preds, all_targets, avg_loss)
 
     if dist.get_rank() == 0:
-        metrics=compute_metrics(model, epoch, all_probs, all_preds, all_targets, avg_loss, split="train")
-        log_metrics(metrics, epoch, config['model'], "train")
+        metrics=compute_metrics(epoch, all_probs, all_preds, all_targets, avg_loss, split="train")
+        log_metrics(run, metrics)
+        log_confusion_matrix(run, all_targets, all_preds, split="train")
 
-def test_gnn_epoch(epoch, model, test_loader, criterion, device, config):
+def test_gnn_epoch(epoch, model, test_loader, criterion, device, run):
     model.eval()
     total_loss = 0
-    all_probs = []
-    all_preds = []
-    all_targets = []
+    all_probs = torch.empty(0)
+    all_preds = torch.empty(0)
+    all_targets = torch.empty(0)
 
     with torch.no_grad():
         for batch in test_loader:
@@ -126,24 +130,25 @@ def test_gnn_epoch(epoch, model, test_loader, criterion, device, config):
             logits = model(batch.x, batch.edge_index)
             logits = logits.squeeze(-1)
 
-            loss = criterion(logits[batch.batch_size:], batch.y[batch.batch_size:])
+            loss = criterion(logits[:batch.batch_size], batch.y[:batch.batch_size])
 
-            probs = torch.sigmoid(logits)
+            probs = torch.sigmoid(logits[:batch.batch_size])
             predictions = (probs>=0.5).long()
-            targets = batch.y[batch.batch_size:]
+            targets = batch.y[:batch.batch_size]
 
-            all_probs.append(probs.cpu())
-            all_preds.append(predictions.cpu())
-            all_targets.append(targets.cpu())
+            all_probs = torch.cat([all_probs, probs.detach().cpu()])
+            all_preds = torch.cat([all_preds, predictions.detach().cpu()])
+            all_targets = torch.cat([all_targets, targets.detach().cpu()])
+
             total_loss += loss.item()
 
     avg_loss = total_loss / len(test_loader)
     all_probs, all_preds, all_targets, avg_loss = gather_all_predictions(all_probs, all_preds, all_targets, avg_loss)
 
     if dist.get_rank() == 0:
-        metrics=compute_metrics(model, epoch, all_probs, all_preds, all_targets, avg_loss, split="test")
-        log_metrics(metrics, epoch, config['model'], "test")
-        log_confusion_matrix(all_targets, all_preds, split="test")
+        metrics=compute_metrics(epoch, all_probs, all_preds, all_targets, avg_loss, split="test")
+        log_metrics(run, metrics)
+        log_confusion_matrix(run, all_targets, all_preds, split="test")
     return metrics
 
 def gather_all_predictions(local_probs, local_preds, local_targets, local_avg_loss):
@@ -169,7 +174,7 @@ def gather_all_predictions(local_probs, local_preds, local_targets, local_avg_lo
 
     return all_probs, all_preds, all_targets, all_avg_loss
 
-def compute_metrics(all_probs, all_preds, all_targets, avg_loss, split):
+def compute_metrics(epoch, all_probs, all_preds, all_targets, avg_loss, split):
 
     acc=(all_preds == all_targets).float().mean().item()
     precision = precision_score(all_targets, all_preds)
@@ -178,13 +183,14 @@ def compute_metrics(all_probs, all_preds, all_targets, avg_loss, split):
     roc_auc = roc_auc_score(all_targets, all_probs)
 
     metrics = {
-        f"{split}_loss": avg_loss,
-        f"{split}_accuracy": acc,
-        f"{split}_precision": precision,
-        f"{split}_recall": recall,
-        f"{split}_f1": f1,
-        f"{split}_roc_auc": roc_auc
+        f"epoch": epoch,
+        f"{split}/loss": avg_loss,
+        f"{split}/accuracy": acc,
+        f"{split}/precision": precision,
+        f"{split}/recall": recall,
+        f"{split}/f1": f1,
+        f"{split}/roc_auc": roc_auc
     }
-    
+
     return metrics
 

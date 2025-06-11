@@ -20,7 +20,6 @@ focal_loss_gamma: 2.0
 use_focal_loss: true
 
 checkpoint_dir: "./checkpoints"
-run_name: "experiment_01"
 project_name: "te-classification"
 
 species: "mouse"  # mouse/dog/dro
