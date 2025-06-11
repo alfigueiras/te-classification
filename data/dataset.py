@@ -100,7 +100,7 @@ def standardize_selected_columns(data, columns_to_standardize):
     data.x = x  # Update the node feature matrix
     return data
 
-def dataset_split_by_components(G: nx.Graph, data_full):
+def dataset_split_by_components(G: nx.Graph, data_full, config):
     """
     Splits the graph into train and test datasets, separating families between them. All the nodes of a family are in the same dataset.
     """
@@ -144,7 +144,7 @@ def dataset_split_by_components(G: nx.Graph, data_full):
             nodes_no_family.append(node)
 
     total_nodes = len(G.nodes)
-    target_nodes_w_fam_in_test = int(0.2 * nodes_w_fam)
+    target_nodes_w_fam_in_test = int(config["test_split"] * nodes_w_fam)
 
     train_nodes = set()
     test_nodes = set()
@@ -171,7 +171,7 @@ def dataset_split_by_components(G: nx.Graph, data_full):
 
     # Number of nodes with no family in the test set
     # We want to have 20% of the total nodes in the test set, so we need to add some nodes with no family, 20% total minus the one we already have
-    num_no_family_test = int(total_nodes*0.2) - len(test_nodes)
+    num_no_family_test = int(total_nodes*config["test_split"]) - len(test_nodes)
 
     train_nodes.update(nodes_no_family[num_no_family_test:])
     test_nodes.update(nodes_no_family[:num_no_family_test])
