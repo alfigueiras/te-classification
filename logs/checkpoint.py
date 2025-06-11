@@ -5,15 +5,20 @@ import json
 from collections import Counter
 
 def save_checkpoint(run, epoch, model, path, name="model"):
-    save_path = f"{path}/{name}_{epoch}.pt"
+    os.makedirs(f"{path}/{run.name}", exist_ok=True)
+    save_path = f"{path}/{run.name}/{name}_{epoch}.pt"
     torch.save(model.state_dict(), save_path)
     run.save(save_path)
 
 def save_best(run, best_epoch, epoch, model, best_val, current_val, path, name="model"):
+    
     if current_val > best_val:
-        torch.save(model.state_dict(), f"{path}/best_{name}.pt")
+        os.makedirs(f"{path}/{run.name}", exist_ok=True)
+        save_path = f"{path}/{run.name}/best_{name}.pt"
+
+        torch.save(model.state_dict(), save_path)
         run.summary["best_val_loss"] = current_val
-        run.save(f"{path}/best_model.pt")
+        run.save(save_path)
         return epoch, current_val
 
     return best_epoch, best_val
