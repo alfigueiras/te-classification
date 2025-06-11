@@ -21,6 +21,7 @@ def main():
         G=pickle.load(open(f"data/processed/graph_{config['species']}{config['kmers']}{config['fam_type']}.pickle", 'rb'))
 
     masks=dataset_split_by_components(G, dataset, number_datasets=config["number_datasets"])
+    
     finish_wandb()
 
 if __name__ == "__main__":
