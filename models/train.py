@@ -71,7 +71,7 @@ def train(rank, world_size, dataset, config, run):
         metrics = test_gnn_epoch(epoch, model, test_loader, criterion, device, run)
         if epoch % config['save_interval'] == 0 and rank == 0:
             save_checkpoint(run, epoch, model, "results", config['model'])
-        if metrics['test/f1'] > best_f1:
+        if metrics['test/f1'] > best_f1 and rank == 0:
             best_epoch, best_f1 = save_best(run, best_epoch, epoch, model, best_f1, metrics['test/f1'], "results", config['model'])
         
         epoch += 1
