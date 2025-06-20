@@ -1,11 +1,11 @@
-learning_rate: 0.005
-epochs: 500
-batch_size: 512
+learning_rate: 0.015
+epochs: 50
+batch_size: 16384
 train_split: 0.8
 test_split: 0.2
 seed: 42
 run_test: false
-save_interval: 50
+save_interval: 5
 
 model: "GAT" # GAT/GATv2/GraphTransformer
 embedding_dim: 512

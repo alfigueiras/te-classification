@@ -13,10 +13,15 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch_geometric.loader import NeighborLoader
 
 def train(rank, world_size, dataset, config, run):
+    
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
     torch.cuda.set_device(rank)
 
     device = torch.device(f'cuda:{rank}')
+
+    print(f'Running on rank {rank}, using GPU {torch.cuda.current_device()}: {torch.cuda.get_device_name(rank)}')
 
     # Model initialization
     if config['model'] == 'GAT':
@@ -69,10 +74,11 @@ def train(rank, world_size, dataset, config, run):
     while epoch <= config['epochs']:
         train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device, run)
         metrics = test_gnn_epoch(epoch, model, test_loader, criterion, device, run)
-        if epoch % config['save_interval'] == 0 and rank == 0:
-            save_checkpoint(run, epoch, model, "results", config['model'])
-        if metrics['test/f1'] > best_f1 and rank == 0:
-            best_epoch, best_f1 = save_best(run, best_epoch, epoch, model, best_f1, metrics['test/f1'], "results", config['model'])
+        if rank==0:
+            if epoch % config['save_interval'] == 0:
+                save_checkpoint(run, epoch, model, "results", config['model'])
+            if metrics['test/f1'] > best_f1:
+                best_epoch, best_f1 = save_best(run, best_epoch, epoch, model, best_f1, metrics['test/f1'], "results", config['model'])
         
         epoch += 1
 
@@ -145,6 +151,8 @@ def test_gnn_epoch(epoch, model, test_loader, criterion, device, run):
     avg_loss = total_loss / len(test_loader)
     all_probs, all_preds, all_targets, avg_loss = gather_all_predictions(all_probs, all_preds, all_targets, avg_loss)
 
+    metrics={}
+    
     if dist.get_rank() == 0:
         metrics=compute_metrics(epoch, all_probs, all_preds, all_targets, avg_loss, split="test")
         log_metrics(run, metrics)
