@@ -33,7 +33,7 @@ def main():
     world_size = torch.cuda.device_count()
     mp.spawn(train, args=(world_size, dataset, config, run), nprocs=world_size, join=True)
 
-    finish_wandb()
+    finish_wandb(run)
 
 if __name__ == "__main__":
     main()

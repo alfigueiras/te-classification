@@ -14,7 +14,7 @@ parameters:
   hidden_dim:
     values: [512, 768, 1024]
   heads:
-    values: [2, 3, 4]
+    values: [1, 2, 4]
   dropout_p: 
     values: [0.2, 0.3, 0.4, 0.5]
   edge_dropout_p: 
