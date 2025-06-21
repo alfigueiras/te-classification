@@ -25,9 +25,9 @@ class GAT_Kmer_Classifier(Module):
         self.gats = ModuleList([GATConv(embedding_dim, hidden_dim//heads, heads=heads, concat=True), 
                                 GATConv(hidden_dim, hidden_dim//heads, heads=heads, concat=True)])
 
-        self.bns = ModuleList([BatchNorm(hidden_dim), BatchNorm(hidden_dim)])
+        self.bns = ModuleList([BatchNorm((hidden_dim // heads) * heads), BatchNorm((hidden_dim // heads) * heads)])
 
-        self.lins = ModuleList([Linear(hidden_dim, hidden_dim), Linear(hidden_dim, hidden_dim//2), Linear(hidden_dim//2, 1)])
+        self.lins = ModuleList([Linear((hidden_dim // heads) * heads, hidden_dim), Linear(hidden_dim, hidden_dim//2), Linear(hidden_dim//2, 1)])
 
 
     def forward(self, x, edge_index):
@@ -80,10 +80,10 @@ class GATv2Conv_Kmer_Classifier(Module):
             self.gatv2.append(
                 GATv2Conv(in_dim, hidden_dim // heads, heads=heads, concat=True, dropout=dropout_p)
             )
-            self.norms.append(BatchNorm(hidden_dim))
+            self.norms.append(BatchNorm((hidden_dim // heads) * heads))
 
         self.lins = ModuleList([
-            Linear(hidden_dim, hidden_dim),
+            Linear((hidden_dim // heads) * heads, hidden_dim),
             Linear(hidden_dim, hidden_dim // 2),
             Linear(hidden_dim // 2, 1)
         ])
@@ -119,6 +119,8 @@ class GraphTransformer_Kmer_Classifier(Module):
 
         self.dropout_p = dropout_p
         self.edge_dropout_p = edge_dropout_p
+        self.embedding_dim = embedding_dim
+        self.hidden_dim = hidden_dim
 
         self.linear_pre = Sequential(
             Linear(dataset.num_node_features, embedding_dim),
@@ -131,6 +133,7 @@ class GraphTransformer_Kmer_Classifier(Module):
             Dropout(dropout_p)
         )
 
+        self.res_proj = Linear(embedding_dim, hidden_dim) if embedding_dim != hidden_dim else Identity()
         self.transformers = ModuleList()
         self.norms = ModuleList()
 
@@ -139,10 +142,10 @@ class GraphTransformer_Kmer_Classifier(Module):
             self.transformers.append(
                 TransformerConv(in_dim, hidden_dim // heads, heads=heads, concat=True, dropout=dropout_p, beta=True)
             )
-            self.norms.append(BatchNorm(hidden_dim))
+            self.norms.append(BatchNorm((hidden_dim // heads) * heads))
 
         self.lins = ModuleList([
-            Linear(hidden_dim, hidden_dim),
+            Linear((hidden_dim // heads) * heads, hidden_dim),
             Linear(hidden_dim, hidden_dim // 2),
             Linear(hidden_dim // 2, 1)
         ])
@@ -153,12 +156,16 @@ class GraphTransformer_Kmer_Classifier(Module):
         if self.training:
             edge_index, _ = dropout_edge(edge_index, p=self.edge_dropout_p)
 
-        for conv, norm in zip(self.transformers, self.norms):
+        for i, (conv, norm) in enumerate(zip(self.transformers, self.norms)):
             h_in = h
             h = conv(h, edge_index)
             h = norm(h)
             h = F.leaky_relu(h)
             h = F.dropout(h, p=self.dropout_p, training=self.training)
+            
+            if i == 0 and self.embedding_dim != self.hidden_dim:
+                h_in = self.res_proj(h_in)
+
             h = h + h_in  # Residual connection
 
         for lin in self.lins[:-1]:

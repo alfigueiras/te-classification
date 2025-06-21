@@ -11,7 +11,8 @@ import torch.multiprocessing as mp
 def main():
     config=get_config()
     run=init_wandb(project_name=config['project_name'], config_dict=config, run_name=config.get('run_name', None))
-
+    config.update(run.config)
+    print(config['learning_rate'])
     processed_file=f"{config['species']}{config['k_mers']}{config['fam_type']}.pt"
 
     os.makedirs("data/processed", exist_ok=True)

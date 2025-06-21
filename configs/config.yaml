@@ -7,9 +7,9 @@ seed: 42
 run_test: false
 save_interval: 5
 
-model: "GAT" # GAT/GATv2/GraphTransformer
+model: "GATv2" # GAT/GATv2/GraphTransformer
 embedding_dim: 512
-hidden_dim: 728
+hidden_dim: 768
 heads: 4
 dropout_p: 0.4
 edge_dropout_p: 0.2
@@ -20,7 +20,7 @@ focal_loss_gamma: 2.0
 use_focal_loss: true
 
 checkpoint_dir: "./checkpoints"
-project_name: "te-classification"
+project_name: "te-classification-gatv2-mus3novo"
 
 species: "mouse"  # mouse/dog/dro
 k_mers: 3         # 0/3/4/5 

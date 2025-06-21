@@ -1,0 +1,25 @@
+program: main.py
+method: bayes
+metric:
+  name: test/f1
+  goal: maximize
+parameters:
+  learning_rate:
+    min: 0.001
+    max: 0.02
+  batch_size:
+    values: [4096,8192,16384]
+  embedding_dim:
+    values: [512, 768, 1024]
+  hidden_dim:
+    values: [512, 768, 1024]
+  heads:
+    values: [2, 3, 4]
+  dropout_p: 
+    values: [0.2, 0.3, 0.4, 0.5]
+  edge_dropout_p: 
+    values: [0.2, 0.3, 0.4, 0.5]
+  focal_loss_alpha:
+    values: [0.25, 0.5, 0.75, 1]
+  focal_loss_gamma:
+    values: [0.5, 1.0, 2.0, 3.0, 5.0]
