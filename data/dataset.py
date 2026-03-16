@@ -99,7 +99,7 @@ def standardize_selected_columns(data, columns_to_standardize):
     data.x = x  # Update the node feature matrix
     return data
 
-def dataset_split_by_components(G: nx.Graph, data_full, config, run):
+def dataset_split_by_components(G: nx.Graph, data_full, config):
     """
     Splits the graph into train and test datasets, separating families between them. All the nodes of a family are in the same dataset.
     """
@@ -203,7 +203,7 @@ def dataset_split_by_components(G: nx.Graph, data_full, config, run):
 
     mask=(train_mask, test_mask, train_fams, test_fams)
 
-    filter_counter_by_keys(run, transposable_e, mask)
+    filter_counter_by_keys(transposable_e, mask)
     return mask
 
 def count_nodes_with_families(G, nodes_subset):

@@ -1,7 +1,10 @@
 __pycache__
 wandb
+env/
 
 *.nodes
 *.edges
 *.pickle
 *.pt
+*.db
+.DS_Store

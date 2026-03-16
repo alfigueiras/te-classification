@@ -1,33 +1,28 @@
-import wandb
+import mlflow
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
 
-def init_wandb(project_name, config_dict, run_name=None):
-    run=wandb.init(
-        project=project_name,
-        config=config_dict,
-        name=run_name,
-        reinit=True,
-    )
+def init_mlflow(experiment_name):
+    mlflow.set_tracking_uri("sqlite:///mlflow.db")
+    mlflow.set_experiment(experiment_name)
+    mlflow.start_run()
 
-    run.define_metric("epoch")
+def log_metrics(metrics, step=None):
+    #step is the epoch number
+    mlflow.log_metrics(metrics, step=step)
 
-    for split in ["train", "test"]:
-        for metric in ["loss", "accuracy", "precision", "recall", "f1", "roc_auc"]:
-            run.define_metric(f"{split}/{metric}", step_metric="epoch")
-            
-    return run
+def log_confusion_matrix(y_true, y_pred, split="train", step=None, labels=[0,1]):
+    cm = confusion_matrix(y_true.int().numpy(), y_pred.int().numpy(), labels=labels)
+    tn, fp, fn, tp = cm.ravel()
+    mlflow.log_metric(f"{split}/tn", tn, step=step)
+    mlflow.log_metric(f"{split}/fp", fp, step=step)
+    mlflow.log_metric(f"{split}/fn", fn, step=step)
+    mlflow.log_metric(f"{split}/tp", tp, step=step)
 
-def log_metrics(run, metrics, step=None):
-    run.log(metrics)
+    fig, ax = plt.subplots(figsize=(6, 6))
+    disp = ConfusionMatrixDisplay(cm, display_labels=labels)
+    disp.plot(ax=ax, colorbar=False)
+    ax.set_title(f"{split.capitalize()} Confusion Matrix - Epoch {step}")
 
-def log_confusion_matrix(run, y_true, y_pred, split="train"):
-    run.log({
-        f"{split}/confusion_matrix": wandb.plot.confusion_matrix(
-            probs=None,
-            y_true=y_true.int().numpy(),
-            preds=y_pred.int().numpy(),
-            class_names=["Not TE", "TE"]
-        )
-    })
-
-def finish_wandb(run):
-    run.finish()
+    mlflow.log_figure(fig, f"confusion_matrices/{split}/{split}_epoch_{step:03d}.png")
+    plt.close(fig)

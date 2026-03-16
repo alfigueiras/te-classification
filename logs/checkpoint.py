@@ -1,30 +1,30 @@
 import torch
-import wandb
+import mlflow
 import os
 import json 
 from collections import Counter
 
 def save_checkpoint(run, epoch, model, path, name="model"):
-    os.makedirs(f"{path}/{run.name}", exist_ok=True)
-    save_path = f"{path}/{run.name}/{name}_{epoch}.pt"
+    os.makedirs(f"{path}/{run.data.tags.get('mlflow.runName')}", exist_ok=True)
+    save_path = f"{path}/{run.data.tags.get('mlflow.runName')}/{name}_{epoch}.pt"
     torch.save(model.state_dict(), save_path)
-    run.save(save_path)
+    mlflow.pytorch.log_model(model, name=f"{name}_{epoch}")
 
-def save_best(run, best_epoch, epoch, model, best_val, current_val, path, name="model"):
+def save_best(run, best_epoch, epoch, model, best_val, current_val, path, name="model", sum_name="best_test_f1"):
     
     if current_val > best_val:
-        os.makedirs(f"{path}/{run.name}", exist_ok=True)
-        save_path = f"{path}/{run.name}/best_{name}.pt"
+        run_name = run.data.tags.get("mlflow.runName")
+        os.makedirs(f"{path}/{run_name}", exist_ok=True)
+        save_path = f"{path}/{run_name}/best_{name}.pt"
 
         torch.save(model.state_dict(), save_path)
-        run.summary["best_val_loss"] = current_val
-        run.save(save_path)
+        mlflow.log_metric(sum_name, current_val, step=epoch)
+        mlflow.pytorch.log_model(model, name=f"best_{name}")
         return epoch, current_val
 
     return best_epoch, best_val
 
-def filter_counter_by_keys(run, te_counts, mask):
-    artifact = wandb.Artifact(name=f"family_counters", type="family-counters")
+def filter_counter_by_keys(te_counts, mask):
 
     train_counter = Counter({key: te_counts[key] for key in mask[2]})
     test_counter = Counter({key: te_counts[key] for key in mask[3]})
@@ -34,16 +34,7 @@ def filter_counter_by_keys(run, te_counts, mask):
         "test_families": dict(test_counter.most_common())
     }
 
-    # Save to temp file
+    # Save to file
     file_name = f"family_counter.json"
     with open(file_name, "w") as f:
         json.dump(combined, f, indent=2)
-
-    # Add to artifact
-    artifact.add_file(file_name)
-
-    # Log the artifact to W&B
-    run.log_artifact(artifact)
-
-    # Optionally: clean up temp files
-    os.remove(f"family_counter.json")

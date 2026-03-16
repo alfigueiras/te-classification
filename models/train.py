@@ -1,11 +1,12 @@
 from logs.checkpoint import save_checkpoint, save_best
-from logs.logging import log_metrics, log_confusion_matrix
+from logs.logging import log_metrics, log_confusion_matrix, init_mlflow
 from models.att_models import GAT_Kmer_Classifier, GATv2Conv_Kmer_Classifier, GraphTransformer_Kmer_Classifier 
 from models.loss import FocalLoss
 
 import torch
 import torch.distributed as dist
 import os
+import mlflow
 
 from torch import nn,optim
 from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
@@ -38,7 +39,7 @@ def train(rank, world_size, dataset, config, run):
     train_loader = NeighborLoader(
         dataset,
         input_nodes=dataset.train_mask,
-        num_neighbors=[15, 10],
+        num_neighbors=[-1, -1],
         batch_size=config['batch_size'],
         shuffle=True,
         filter_per_worker=True,
@@ -55,7 +56,7 @@ def train(rank, world_size, dataset, config, run):
     test_loader = NeighborLoader(
         dataset,
         input_nodes=None,  # Sampler handles it
-        num_neighbors=[15, 10],
+        num_neighbors=[-1, -1],
         batch_size=config['batch_size'],
         sampler=val_sampler,
         filter_per_worker=True,
@@ -71,6 +72,13 @@ def train(rank, world_size, dataset, config, run):
 
     os.makedirs("results", exist_ok=True)
 
+    if rank == 0:
+        init_mlflow()
+        mlflow.log_params({"world_size": dist.get_world_size()})
+        run = mlflow.active_run()
+    else:
+        run = None
+
     while epoch <= config['epochs']:
         train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device, run)
         metrics = test_gnn_epoch(epoch, model, test_loader, criterion, device, run)
@@ -82,7 +90,11 @@ def train(rank, world_size, dataset, config, run):
         
         epoch += 1
 
+    if rank==0:
+        mlflow.end_run()
+
     dist.destroy_process_group()
+
     print(f"Best test F1 score: {best_f1:.4f} at epoch {best_epoch}")
     
 def train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device, run):

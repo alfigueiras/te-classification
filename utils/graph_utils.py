@@ -2,6 +2,9 @@ import networkx as nx
 import itertools
 from tqdm import tqdm
 import re
+import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+import numpy as np
 
 def create_digraph_new(nodes_path="", edges_path="", add_in_superbubble_atr=False, zero_column=True, kmers=0, disable_tqdm=False):
     """
@@ -141,3 +144,264 @@ def find_superbubbles_directed(graph: nx.DiGraph, disable_tqdm=False):
                             superbubbles.append((node, t[0], nodes_inside))
         
     return superbubbles
+
+def find_bubble_chains(bubbles):
+    """
+    Given a list of bubbles, finds all bubble chains. A bubble chain is a sequence of bubbles where the end of one bubble is the start of the next.
+    """
+    used_bubbles=[]
+    bubble_chains=[]
+    for bubble in bubbles:
+        if bubble not in used_bubbles:
+            chain_found=True
+            current_bubble=bubble
+            bubble_chain=[current_bubble]
+            while chain_found:
+                chain_found=False
+                for next_bubble in bubbles:
+                    # The end of current bubble is the same as the start of the next bubble
+                    if current_bubble[1]==next_bubble[0] and current_bubble[0]!=next_bubble[1] and next_bubble not in bubble_chain:
+                        used_bubbles.append(next_bubble)
+                        bubble_chain.append(next_bubble)
+                        current_bubble=next_bubble
+                        chain_found=True
+                        break
+            if len(bubble_chain)>1:
+                bubble_chains.append(bubble_chain)
+                    
+    return bubble_chains
+
+def superbubble_duplicates_remove(bubbles):
+    """
+    Given a list of superbubbles, removes duplicates (pairs of bubbles where the sink and source are switched, seen).
+    """
+    superbubbles=[]
+    for bubble in bubbles:
+        found=False
+        for new_bubble in superbubbles:
+            if bubble[0]==new_bubble[1] and bubble[1]==new_bubble[0]:
+                found=True
+                break
+        if not found: 
+            superbubbles.append(bubble)
+    return superbubbles
+
+def draw_bubble(bubble, graph: nx.DiGraph, get_all_parents=False, get_extremity_neighbors=True, node_size=500, font_size=10):
+    bubble_start, bubble_end = bubble[0], bubble[1]
+    # Make a local copy to avoid modifying the original list
+    nodes_to_draw = set(bubble[2])
+
+    if get_all_parents:
+        new_nodes_to_draw = set(nodes_to_draw)
+        for node in nodes_to_draw:
+            for parent in graph.predecessors(node):
+                new_nodes_to_draw.add(parent)
+        nodes_to_draw = new_nodes_to_draw
+
+    if get_extremity_neighbors:
+        for parent in graph.predecessors(bubble_start):
+            if parent not in nodes_to_draw:
+                nodes_to_draw.add(parent)
+                break
+
+        for parent in graph.predecessors(bubble_end):
+            if parent not in nodes_to_draw:
+                nodes_to_draw.add(parent)
+                break
+
+    subgraph = graph.subgraph(nodes_to_draw)
+    node_colors = []
+    for node in subgraph.nodes():
+        if node == bubble_start or node == bubble_end:
+            node_colors.append('red')  # Color for bubble_start or bubble_end
+        else:
+            node_colors.append('lightblue')  # Default color for other nodes
+
+    plt.figure(figsize=(8, 6))
+    nx.draw(subgraph, with_labels=True, node_color=node_colors, edge_color='gray', node_size=node_size, font_size=font_size)
+    plt.title("Bubble Visualization")
+    plt.show()
+
+def draw_bubble_chain(bubble_chain, graph: nx.DiGraph, get_extremity_neighbors, node_size=500, font_size=10):
+    nodes_to_draw=set()
+    bubble_boundary=set()
+    for bubble in bubble_chain:
+        bubble_boundary.add(bubble[0])
+        bubble_boundary.add(bubble[1])
+        nodes_to_draw.update(set(bubble[2]))
+    
+    if get_extremity_neighbors:
+        for parent in graph.predecessors(bubble_chain[0][0]):
+            if parent not in nodes_to_draw:
+                nodes_to_draw.add(parent)
+                break
+
+        for parent in graph.predecessors(bubble_chain[-1][1]):
+            if parent not in nodes_to_draw:
+                nodes_to_draw.add(parent)
+                break
+
+    subgraph = graph.subgraph(nodes_to_draw)
+    node_colors = []
+    for node in subgraph.nodes():
+        if node in bubble_boundary:
+            node_colors.append('red')  # Color for bubble_start
+        else:
+            node_colors.append('lightblue')  # Default color for other nodes
+    
+    plt.figure(figsize=(8, 6))
+    nx.draw(subgraph, with_labels=True, node_color=node_colors, edge_color='gray', node_size=node_size, font_size=font_size)
+    plt.title("Bubble Chain")
+    plt.show()
+
+def weakly_connected_component_subgraphs(graph: nx.DiGraph):
+    """
+    Given a directed graph, computes all weakly connected components and outputs their respective subgraphs, 
+    the nodes belonging to each component and the size of each component.
+    """
+    weakly_conn_comp=nx.weakly_connected_components(graph)
+    components=[]
+    component_lens=[]
+
+    for comp in weakly_conn_comp:
+        components.append(set(comp))
+        component_lens.append(len(comp))
+    
+    subgraphs=[graph.subgraph(c).copy() for c in components]
+
+    return subgraphs, components, component_lens
+
+def degree_histogram(graph, direction=False, title="Histogram of Node Degrees"):
+    """
+    Plots an histogram with the degrees of the nodes of the given graph.
+
+    direction: False / "in" / "out"
+    For this type of graphs "in degree" = "out degree"
+    """
+    if direction=="in":
+        degrees=[d for n,d in graph.in_degree()]
+    elif direction=="out":
+        degrees=[d for n,d in graph.out_degree()]
+    else:
+        degrees=[d for n,d in graph.degree()]
+    
+    fig = go.Figure()
+
+    histogram = go.Histogram(
+        x=degrees,
+        nbinsx=max(degrees) - min(degrees) + 1,
+        marker=dict(color='cornflowerblue', line=dict(width=1, color='black')),
+        showlegend=False,
+        histnorm=None,
+    )
+    fig.add_trace(histogram)
+
+    counts = [degrees.count(d) for d in sorted(set(degrees))]
+
+    max_count=max(counts)
+
+    for i, count in enumerate(counts):
+        fig.add_annotation(
+            x=sorted(set(degrees))[i], 
+            y=count+max_count/20,
+            text=str(count),
+            showarrow=False,
+            font=dict(size=12, color="black"),
+        )
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Degree",
+        yaxis_title="Frequency",
+        bargap=0.1,
+        template="plotly_white",
+        xaxis=dict(dtick=1, range=[-0.5, max(degrees) + 0.5]),
+        width=700,
+        height=400,
+    )
+
+    fig.show()
+
+def kk_core_graph(G: nx.DiGraph, k_in: int, k_out: int):
+    """
+    Searches for (k_in,k_out)-D-cores in the given graph by iteratitvely removing nodes until we have only the cores.
+    """
+    graph=nx.DiGraph.copy(G)
+    remove_nodes_lst=[0]
+
+    # Iterate until we have only nodes with in_degree >= k_in and out_degree >= k_out
+    while len(remove_nodes_lst)>0:
+        remove_nodes_lst=[]
+        for node in graph.nodes:
+            if graph.in_degree(node)<k_in or graph.out_degree(node)<k_out:
+                remove_nodes_lst.append(node)
+        graph.remove_nodes_from(remove_nodes_lst)
+    
+    return graph
+
+def k_core_graph(G: nx.Graph, k:int):
+    """
+    Searches for k-cores in the given graph by iteratitvely removing nodes until we have only the cores.
+    """
+    graph=nx.Graph.copy(G)
+    remove_nodes_lst=[0]
+
+    # Iterate until we have only nodes with in_degree >= k_in and out_degree >= k_out
+    while len(remove_nodes_lst)>0:
+        remove_nodes_lst=[]
+        for node in graph.nodes:
+            if graph.degree(node)<k:
+                remove_nodes_lst.append(node)
+        graph.remove_nodes_from(remove_nodes_lst)
+    
+    return graph
+
+
+def connected_component_subgraphs(graph):
+    """
+    Given a directed graph, computes all connected components and outputs their respective subgraphs,
+    nodes belonging to each component and the size of each component."""
+    conn_comp=nx.connected_components(graph)
+    components=[]
+    component_lens=[]
+
+    for comp in conn_comp:
+        components.append(set(comp))
+        component_lens.append(len(comp))
+    
+    subgraphs=[graph.subgraph(c).copy() for c in components]
+
+    return subgraphs, components, component_lens
+
+def incremental_conductance(graph: nx.Graph, pagerank: list):
+    """
+    Computes the incremental conductance of a graph based on the pagerank values of its nodes.
+    """
+
+    # Sort nodes by decreasing pagerank value
+    sorted_nodes = sorted(pagerank, key=pagerank.get, reverse=True)
+
+    cut_edges = 0
+    subset_vol = 0
+    conductance_vals=[]
+
+    # Incrementally join nodes to the subset and compute the conductance
+    for i, node in enumerate(tqdm(sorted_nodes)):
+        subset_vol += graph.degree(node)  # Add the node's degree to subset volume
+
+        # Update cut edges: edges connecting to nodes outside the subset
+        for neighbor in graph.neighbors(node):
+            if neighbor not in sorted_nodes[:i + 1]:  # If the neighbor is not in the subset
+                cut_edges += 1
+            else:  # If the neighbor is in the subset, remove this as it was a "cut edge"
+                cut_edges -= 1
+        
+        if i%50000==0 and i!=0:
+            with open('conduct_vals_mouse.npy', 'wb') as f:
+                np.save(f,np.array(conductance_vals))
+
+        # Compute conductance
+        conductance = cut_edges / subset_vol
+        conductance_vals.append(conductance)
+
+    return conductance_vals

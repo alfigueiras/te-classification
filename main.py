@@ -1,3 +1,4 @@
+import mlflow
 from logs.logging import init_wandb, finish_wandb
 from configs.default import get_config
 from data.dataset import create_dataset, dataset_split_by_components
@@ -9,7 +10,7 @@ import torch
 import torch.multiprocessing as mp
 import numpy as np
 
-def main(config=None, run=None):
+def main(config=None):
 
     gpu_ids = config.get("gpu_ids", "all")  # e.g. [0,2,3]
 
@@ -27,13 +28,13 @@ def main(config=None, run=None):
 
     if processed_file not in os.listdir("data/processed") or config["recreate_dataset"]:
         print(f"Creating dataset...")
-        dataset,G=create_dataset(config)
+        dataset, G=create_dataset(config)
     else:
         print("Found processed dataset, loading...")
         dataset=torch.load(f"data/processed/{processed_file}", weights_only=False)
         G=pickle.load(open(f"data/processed/graph_{config['species']}{config['k_mers']}{config['fam_type']}.pickle", 'rb'))
 
-    mask=dataset_split_by_components(G, dataset, config, run)
+    mask=dataset_split_by_components(G, dataset, config)
 
     dataset.train_mask = mask[0]
     dataset.test_mask = mask[1]
@@ -49,23 +50,16 @@ def main(config=None, run=None):
         print("CUDA not available, using CPU for training")
 
     print("Starting training...")
-    mp.spawn(train, args=(world_size, dataset, config, run), nprocs=world_size, join=True)
+    mp.spawn(train, args=(world_size, G, dataset, config), nprocs=world_size, join=True)
 
 if __name__ == "__main__":
     config=get_config()
 
-    run=init_wandb(
-        project_name=config["project_name"],
-        config_dict=config,
-        run_name=config.get("run_name", None)
-    )
-    config.update(run.config)
     print(config['learning_rate'])
     try:
-        main(config, run)
+        main(config)
     except Exception as e:
         print(f"An error occurred: {e}")
-        run.log({"error": str(e)})
         raise e
     finally:
-        finish_wandb(run)
+        mlflow.end_run()
