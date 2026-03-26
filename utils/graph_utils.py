@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 import numpy as np
 
-def create_digraph_new(nodes_path="", edges_path="", add_in_superbubble_atr=False, zero_column=True, kmers=0, disable_tqdm=False):
+def create_digraph_new(nodes_path="", edges_path="", add_in_superbubble_atr=False, add_in_local_cluster_atr=False, zero_column=True, kmers=0, disable_tqdm=False, k_core_val=3):
     """
     Creates a directed graph using the nodes and edges in the respective paths, using the mouse dataset.
     """
@@ -60,6 +60,8 @@ def create_digraph_new(nodes_path="", edges_path="", add_in_superbubble_atr=Fals
                 edge = line.split()
                 G.add_edge(int(edge[0]), int(edge[1]), orientation=edge[2])
 
+    G.remove_nodes_from(list(nx.isolates(G)))
+
     if add_in_superbubble_atr:
         in_superbubble_attr={node: 0 for node in G.nodes}
         in_superbubble_chain_attr={node: 0 for node in G.nodes}
@@ -83,8 +85,37 @@ def create_digraph_new(nodes_path="", edges_path="", add_in_superbubble_atr=Fals
         nx.set_node_attributes(G, in_superbubble_attr, name="in_superbubble")
         nx.set_node_attributes(G, in_superbubble_chain_attr, name="in_superbubble_chain")
         nx.set_node_attributes(G, is_superbubble_boundary_attr, name="is_superbubble_boundary")
+
+    if add_in_local_cluster_atr:
         
-    return G
+        undirected_G=nx.Graph()
+        undirected_G.add_nodes_from(G.nodes(data=True))
+        undirected_G.add_edges_from(G.edges())
+        k_core_sub = k_core_graph(undirected_G, k_core_val)
+
+        in_local_cluster_atr={node: 0 for node in undirected_G.nodes}
+
+        distribution={node: 0 for node in undirected_G.nodes}
+
+        s=k_core_sub.number_of_nodes()
+
+        for core_node in k_core_sub:
+            distribution[core_node]=1/s
+
+        pagerank=nx.pagerank(undirected_G,personalization=distribution)
+
+        conductance_vals = incremental_conductance(undirected_G, pagerank)
+
+        conduct_argmin=np.argmin(conductance_vals[:125000])
+
+        sorted_nodes = sorted(pagerank, key=pagerank.get, reverse=True)[:conduct_argmin+1]
+
+        for node in sorted_nodes[:conduct_argmin+1]:
+            in_local_cluster_atr[node]=1
+
+        nx.set_node_attributes(undirected_G, in_local_cluster_atr, name="in_local_cluster")
+
+    return undirected_G
 
 
 def find_superbubbles_directed(graph: nx.DiGraph, disable_tqdm=False):

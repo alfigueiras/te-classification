@@ -41,13 +41,17 @@ def create_dataset(config):
 
     zero_column=config['species']=='mouse'
 
-    G=create_digraph_new(node_path, edge_path, add_in_superbubble_atr=True, zero_column=zero_column, kmers=config['k_mers'], disable_tqdm=True)
-    G.remove_nodes_from(list(nx.isolates(G)))
+    if config['species']=='mouse':
+        k_core_val=4
+    else:
+        k_core_val=3
+
+    undirected_G=create_digraph_new(node_path, edge_path, add_in_superbubble_atr=True, add_in_local_cluster_atr=True, zero_column=zero_column, kmers=config['k_mers'], disable_tqdm=True, k_core_val=k_core_val)
 
     # Convert to undirected graph
-    undirected_G=nx.Graph()
-    undirected_G.add_nodes_from(G.nodes(data=True))
-    undirected_G.add_edges_from(G.edges())
+    # undirected_G=nx.Graph()
+    # undirected_G.add_nodes_from(G.nodes(data=True))
+    # undirected_G.add_edges_from(G.edges())
 
     pickle.dump(undirected_G, open(f"data/processed/graph_{config['species']}{str(config['k_mers'])}{config['fam_type']}.pickle", 'wb'))
 
@@ -62,7 +66,7 @@ def create_dataset(config):
 
 
 def data_to_torch(undirected_G, k_mers):
-    g_node_attrs=['in_superbubble', 'in_superbubble_chain', 'is_superbubble_boundary', 'weight', 'abundance']
+    g_node_attrs=['in_superbubble', 'in_superbubble_chain', 'is_superbubble_boundary', 'in_local_cluster', 'weight', 'abundance']
     undirected_G, struct_features_names = structural_features(undirected_G)
     g_node_attrs+=struct_features_names
 
@@ -77,7 +81,7 @@ def data_to_torch(undirected_G, k_mers):
     y = dataset.x[:, -1].to(torch.float32)
     x = dataset.x[:, :-1].to(torch.float32)
 
-   #columns_to_standardize = list(range(3, len(g_node_attrs)))
+   #columns_to_standardize = list(range(4, len(g_node_attrs)))
 
     dataset = Data(x=x, y=y, edge_index=dataset.edge_index)
 
