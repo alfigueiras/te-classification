@@ -63,15 +63,15 @@ def create_digraph_new(nodes_path="", edges_path="", add_in_superbubble_atr=Fals
     if add_in_superbubble_atr:
         in_superbubble_attr={node: 0 for node in G.nodes}
         in_superbubble_chain_attr={node: 0 for node in G.nodes}
-        boundary_superbubble_attr={node: 0 for node in G.nodes}
+        is_superbubble_boundary_attr={node: 0 for node in G.nodes}
         
         superbubbles=find_superbubbles_directed(G, disable_tqdm=disable_tqdm)
         superbubble_chains=find_bubble_chains(superbubbles)
         superbubble_chains=superbubble_duplicates_remove(superbubble_chains)
 
         for s_bubble in superbubbles:
-            boundary_superbubble_attr[s_bubble[0]]=1
-            boundary_superbubble_attr[s_bubble[1]]=1
+            is_superbubble_boundary_attr[s_bubble[0]]=1
+            is_superbubble_boundary_attr[s_bubble[1]]=1
             for node in s_bubble[2]:
                 in_superbubble_attr[node]=1
 
@@ -82,7 +82,7 @@ def create_digraph_new(nodes_path="", edges_path="", add_in_superbubble_atr=Fals
 
         nx.set_node_attributes(G, in_superbubble_attr, name="in_superbubble")
         nx.set_node_attributes(G, in_superbubble_chain_attr, name="in_superbubble_chain")
-        nx.set_node_attributes(G, boundary_superbubble_attr, name="boundary_superbubble")
+        nx.set_node_attributes(G, is_superbubble_boundary_attr, name="is_superbubble_boundary")
         
     return G
 

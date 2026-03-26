@@ -62,7 +62,9 @@ def create_dataset(config):
 
 
 def data_to_torch(undirected_G, k_mers):
-    g_node_attrs=['weight', 'in_superbubble', 'abundance']
+    g_node_attrs=['in_superbubble', 'in_superbubble_chain', 'is_superbubble_boundary', 'weight', 'abundance']
+    undirected_G, struct_features_names = structural_features(undirected_G)
+    g_node_attrs+=struct_features_names
 
     if k_mers > 0:
         for p in itertools.product(['A','C','G','T'], repeat=k_mers):
@@ -75,13 +77,56 @@ def data_to_torch(undirected_G, k_mers):
     y = dataset.x[:, -1].to(torch.float32)
     x = dataset.x[:, :-1].to(torch.float32)
 
-    columns_to_standardize = [0, 2]
+   #columns_to_standardize = list(range(3, len(g_node_attrs)))
 
     dataset = Data(x=x, y=y, edge_index=dataset.edge_index)
 
-    x=standardize_selected_columns(dataset, columns_to_standardize)
+    #x=standardize_selected_columns(dataset, columns_to_standardize)
 
     return dataset    
+
+
+def structural_features(undirected_G):
+    # Calculate node degree and clustering coefficient
+    degree_dict = dict(undirected_G.degree())
+    clustering_dict = nx.clustering(undirected_G)
+    
+    # Get connected components
+    components = list(nx.connected_components(undirected_G))
+    node_to_component = {}
+    for comp_idx, component in enumerate(components):
+        for node in component:
+            node_to_component[node] = comp_idx
+    
+    # Calculate component-level statistics
+    component_stats = {}
+    for comp_idx, component in enumerate(components):
+        comp_degrees = [degree_dict[node] for node in component]
+        component_stats[comp_idx] = {
+            'min_degree': min(comp_degrees),
+            'max_degree': max(comp_degrees),
+            'mean_degree': np.mean(comp_degrees),
+            'size': len(component)
+        }
+    
+    # Assign features to each node
+    features = {}
+    for node in undirected_G.nodes():
+        comp_idx = node_to_component[node]
+        stats = component_stats[comp_idx]
+        features[node] = {
+            'degree': degree_dict[node],
+            'clustering_coefficient': clustering_dict[node],
+            'component_min_degree': stats['min_degree'],
+            'component_max_degree': stats['max_degree'],
+            'component_mean_degree': stats['mean_degree'],
+            'component_size': np.log(1+stats['size']) #log since it is extremely skewed because of giant components
+        }
+
+    struct_features_names=['degree', 'clustering_coefficient', 'component_min_degree', 'component_max_degree', 'component_mean_degree', 'component_size']
+    nx.set_node_attributes(undirected_G, features)
+    
+    return undirected_G, struct_features_names
 
 def standardize_selected_columns(data, columns_to_standardize):
     x = data.x  # Node feature matrix (num_nodes x num_features)
