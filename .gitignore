@@ -7,4 +7,6 @@ env/
 *.pickle
 *.pt
 *.db
+*.json
+*.npy
 .DS_Store

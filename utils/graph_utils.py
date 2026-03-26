@@ -62,16 +62,28 @@ def create_digraph_new(nodes_path="", edges_path="", add_in_superbubble_atr=Fals
 
     if add_in_superbubble_atr:
         in_superbubble_attr={node: 0 for node in G.nodes}
+        in_superbubble_chain_attr={node: 0 for node in G.nodes}
         boundary_superbubble_attr={node: 0 for node in G.nodes}
+        
         superbubbles=find_superbubbles_directed(G, disable_tqdm=disable_tqdm)
+        superbubble_chains=find_bubble_chains(superbubbles)
+        superbubble_chains=superbubble_duplicates_remove(superbubble_chains)
+
         for s_bubble in superbubbles:
             boundary_superbubble_attr[s_bubble[0]]=1
             boundary_superbubble_attr[s_bubble[1]]=1
             for node in s_bubble[2]:
                 in_superbubble_attr[node]=1
 
+        for s_bubble_chain in superbubble_chains:
+            for s_bubble in s_bubble_chain:
+                for node in s_bubble[2]:
+                    in_superbubble_chain_attr[node]=1
+
         nx.set_node_attributes(G, in_superbubble_attr, name="in_superbubble")
+        nx.set_node_attributes(G, in_superbubble_chain_attr, name="in_superbubble_chain")
         nx.set_node_attributes(G, boundary_superbubble_attr, name="boundary_superbubble")
+        
     return G
 
 
@@ -373,7 +385,7 @@ def connected_component_subgraphs(graph):
 
     return subgraphs, components, component_lens
 
-def incremental_conductance(graph: nx.Graph, pagerank: list):
+def incremental_conductance(graph: nx.Graph, pagerank: list, npy_file_name: str = "conduct_vals_mouse.npy"):
     """
     Computes the incremental conductance of a graph based on the pagerank values of its nodes.
     """
@@ -385,19 +397,22 @@ def incremental_conductance(graph: nx.Graph, pagerank: list):
     subset_vol = 0
     conductance_vals=[]
 
+    nodes_dict = {node: False for node in graph.nodes()}
+
     # Incrementally join nodes to the subset and compute the conductance
     for i, node in enumerate(tqdm(sorted_nodes)):
         subset_vol += graph.degree(node)  # Add the node's degree to subset volume
 
+        nodes_dict[node] = True
         # Update cut edges: edges connecting to nodes outside the subset
         for neighbor in graph.neighbors(node):
-            if neighbor not in sorted_nodes[:i + 1]:  # If the neighbor is not in the subset
+            if not nodes_dict[neighbor]:  # If the neighbor is not in the subset
                 cut_edges += 1
             else:  # If the neighbor is in the subset, remove this as it was a "cut edge"
                 cut_edges -= 1
         
         if i%50000==0 and i!=0:
-            with open('conduct_vals_mouse.npy', 'wb') as f:
+            with open(npy_file_name, 'wb') as f:
                 np.save(f,np.array(conductance_vals))
 
         # Compute conductance
