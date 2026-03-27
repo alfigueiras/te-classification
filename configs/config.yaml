@@ -27,5 +27,7 @@ project_name: "te-classification-gatv2-mus3novo"
 species: "mouse"  # mouse/dog/dro
 k_mers: 3         # 0/3/4/5 
 fam_type: "Novo"  # "Novo"/""
+features_subset: "all" #none/original/structural/alg/kmer_counts/dnabert/all
+partition: "random/families/two_graphs"
 
 recreate_dataset: False

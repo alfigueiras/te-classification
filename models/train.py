@@ -13,7 +13,7 @@ from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_sco
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch_geometric.loader import NeighborLoader
 
-def train(rank, world_size, dataset, config, run):
+def train(rank, world_size, dataset, config):
     
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'

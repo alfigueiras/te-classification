@@ -6,6 +6,7 @@ import random
 import torch
 import pickle
 import itertools
+import copy
 import numpy as np
 import networkx as nx
 
@@ -67,12 +68,32 @@ def create_dataset(config):
 
 def data_to_torch(undirected_G, k_mers):
     g_node_attrs=['in_superbubble', 'in_superbubble_chain', 'is_superbubble_boundary', 'in_local_cluster', 'weight', 'abundance']
+
+    base_features = [
+        'weight',
+        'abundance'
+    ]
+
+    alg_features=[
+        'in_superbubble',
+        'in_superbubble_chain',
+        'is_superbubble_boundary',
+        'in_local_cluster'
+    ]
+
+    g_node_attrs=base_features.copy()
+
+    g_node_attrs+=alg_features
+
     undirected_G, struct_features_names = structural_features(undirected_G)
     g_node_attrs+=struct_features_names
-
+    
+    k_mer_features=[]
     if k_mers > 0:
         for p in itertools.product(['A','C','G','T'], repeat=k_mers):
-            g_node_attrs.append(''.join(p))
+            k_mer_features.append(''.join(p))
+    
+    g_node_attrs+=k_mer_features
             
     g_node_attrs.append('is_dfam')
 
@@ -85,9 +106,13 @@ def data_to_torch(undirected_G, k_mers):
 
     dataset = Data(x=x, y=y, edge_index=dataset.edge_index)
 
-    #x=standardize_selected_columns(dataset, columns_to_standardize)
+    dataset.feature_names = g_node_attrs[:-1]
+    dataset.base_features = base_features
+    dataset.alg_features = alg_features
+    dataset.struct_features = struct_features_names
+    dataset.kmer_features = k_mer_features
 
-    return dataset    
+    return dataset
 
 
 def structural_features(undirected_G):
@@ -132,21 +157,37 @@ def structural_features(undirected_G):
     
     return undirected_G, struct_features_names
 
-def standardize_selected_columns(data, columns_to_standardize):
-    x = data.x  # Node feature matrix (num_nodes x num_features)
 
-    # Compute mean and std for the selected columns
-    mean = x[:, columns_to_standardize].mean(dim=0)
-    std = x[:, columns_to_standardize].std(dim=0)
+def standardize_selected_columns(dataset, train_mask, exclude_feature_names=None, eps=1e-8):
+    if exclude_feature_names is None:
+        exclude_feature_names = []
 
-    # Avoid division by zero for columns with zero variance
-    std[std == 0] = 1.0
+    # columns to standardize
+    cols_to_standardize = [
+        i for i, f in enumerate(dataset.feature_names)
+        if f not in exclude_feature_names
+    ]
 
-    # Standardize only the selected columns
-    x[:, columns_to_standardize] = (x[:, columns_to_standardize] - mean) / std
+    if len(cols_to_standardize) == 0:
+        return dataset, None, None
 
-    data.x = x  # Update the node feature matrix
-    return data
+    cols_to_standardize = torch.tensor(cols_to_standardize, device=dataset.x.device)
+
+    # fit only on training nodes
+    x_train = dataset.x[train_mask][:, cols_to_standardize]
+
+    mean = x_train.mean(dim=0)
+    std = x_train.std(dim=0, unbiased=False)
+
+    # avoid division by zero
+    std = torch.where(std < eps, torch.ones_like(std), std)
+
+    # apply same train statistics to all nodes
+    dataset.x[:, cols_to_standardize] = (
+        dataset.x[:, cols_to_standardize] - mean
+    ) / std
+
+    return dataset, mean, std
 
 def dataset_split_by_components(G: nx.Graph, data_full, config):
     """
