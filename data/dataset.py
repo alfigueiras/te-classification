@@ -13,6 +13,7 @@ import networkx as nx
 from torch_geometric.utils import from_networkx
 from torch_geometric.data import Data
 from collections import Counter, defaultdict
+from sklearn.model_selection import train_test_split
 
 def create_dataset(config):
 
@@ -303,3 +304,28 @@ def count_nodes_with_families(G, nodes_subset):
         if families and families != ['*']:
             count += 1
     return count
+
+def counts(dataset, mask):
+    total = dataset.y[mask].shape[0]
+    zeros = (dataset.y[mask] == 0).sum().item()
+    ones = (dataset.y[mask] == 1).sum().item()
+    print(f"Total: {total}, Zeros: {zeros}, Ones: {ones}")
+
+def random_dataset_split(dataset, config):
+    
+    # Split each class into training and validation sets
+    train_class_idx, val_class_idx = train_test_split(range(dataset.num_nodes), test_size=config["test_split"], random_state=config["seed"])
+
+    # Create boolean masks
+    train_mask = torch.zeros(dataset.num_nodes, dtype=torch.bool)
+    val_mask = torch.zeros(dataset.num_nodes, dtype=torch.bool)
+
+    train_mask[train_class_idx] = True
+    val_mask[val_class_idx] = True
+
+    print('[TRAIN]', end=' ')
+    counts(dataset, train_mask)
+    print('[VAL]', end=' ')
+    counts(dataset, val_mask)
+
+    return train_mask, val_mask

@@ -1,7 +1,6 @@
 import mlflow
-from logs.logging import init_wandb, finish_wandb
 from configs.default import get_config
-from data.dataset import create_dataset, dataset_split_by_components, standardize_selected_columns
+from data.dataset import create_dataset, dataset_split_by_components, standardize_selected_columns, random_dataset_split
 from models.train import train
 
 import os
@@ -52,10 +51,18 @@ def main(config=None):
         dataset.x = dataset.x[:, indices]   
         dataset.feature_names = selected_features
 
-    mask=dataset_split_by_components(G, dataset, config)
 
-    dataset.train_mask = mask[0]
-    dataset.test_mask = mask[1]
+    if config["partition"]=="families":
+        mask=dataset_split_by_components(G, dataset, config)
+        dataset.train_mask = mask[0]
+        dataset.test_mask = mask[1]
+    elif config["partition"]=="random":
+        train_mask, test_mask = random_dataset_split(dataset, config)
+        dataset.train_mask = train_mask
+        dataset.test_mask = test_mask
+    elif config["partition"]=="two_graphs":
+        dataset.train_mask = torch.ones(dataset.num_nodes, dtype=torch.bool)
+        dataset.test_mask = torch.zeros(dataset.num_nodes, dtype=torch.bool)
 
     #standardize
     if config["features_subset"]!="none":
