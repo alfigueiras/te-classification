@@ -1,6 +1,6 @@
 import mlflow
 from configs.default import get_config
-from data.dataset import create_dataset, dataset_split_by_components, standardize_selected_columns, random_dataset_split
+from data.dataset import create_dataset, dataset_split_by_components, standardize_selected_columns, random_dataset_split, test_standardize
 from models.train import train
 
 import os
@@ -51,7 +51,6 @@ def main(config=None):
         dataset.x = dataset.x[:, indices]   
         dataset.feature_names = selected_features
 
-
     if config["partition"]=="families":
         mask=dataset_split_by_components(G, dataset, config)
         dataset.train_mask = mask[0]
@@ -61,8 +60,28 @@ def main(config=None):
         dataset.train_mask = train_mask
         dataset.test_mask = test_mask
     elif config["partition"]=="two_graphs":
+        test_processed_file=f"{config['test_species']}{config['test_k_mers']}{config['test_fam_type']}.pt"
+
+        if test_processed_file not in os.listdir("data/processed") or config["recreate_dataset"]:
+            print(f"Creating dataset...")
+            new_config=config.copy()
+            new_config["species"]=config['test_species']
+            new_config["k_mers"]=config['test_k_mers']
+            new_config["fam_type"]=config['test_fam_type']
+            test_dataset, test_G=create_dataset(new_config)
+        else:
+            print("Found processed dataset, loading...")
+            test_dataset=torch.load(f"data/processed/{processed_file}", weights_only=False)
+            test_G=pickle.load(open(f"data/processed/graph_{config['species']}{config['k_mers']}{config['fam_type']}.pickle", 'rb'))
+
         dataset.train_mask = torch.ones(dataset.num_nodes, dtype=torch.bool)
         dataset.test_mask = torch.zeros(dataset.num_nodes, dtype=torch.bool)
+        test_dataset.train_mask = torch.zeros(test_dataset.num_nodes, dtype=torch.bool)
+        test_dataset.test_mask = torch.ones(test_dataset.num_nodes, dtype=torch.bool)
+
+        if config["features_subset"]!="all":
+            test_dataset.x = test_dataset.x[:, indices]   
+            test_dataset.feature_names = selected_features
 
     #standardize
     if config["features_subset"]!="none":
@@ -70,6 +89,12 @@ def main(config=None):
         dataset,mean,std=standardize_selected_columns(dataset, dataset.train_mask, exclude_feature_names=exclude)
         dataset.x_train_mean=mean
         dataset.x_train_std=std
+
+        if config["partition"]=="two_graphs":
+            test_dataset=test_standardize(test_dataset, mean, std)
+
+    if config["partition"]!="two_graphs":
+        test_dataset=None
 
     if torch.cuda.is_available():
         if gpu_ids == "all":
@@ -82,7 +107,7 @@ def main(config=None):
         print("CUDA not available, using CPU for training")
 
     print("Starting training...")
-    mp.spawn(train, args=(world_size, dataset, config), nprocs=world_size, join=True)
+    mp.spawn(train, args=(world_size, dataset, config, test_dataset), nprocs=world_size, join=True)
 
 if __name__ == "__main__":
     config=get_config()

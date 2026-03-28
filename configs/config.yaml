@@ -29,5 +29,8 @@ k_mers: 3         # 0/3/4/5
 fam_type: "Novo"  # "Novo"/""
 features_subset: "all" #none/original/structural/alg/kmer_counts/dnabert/all
 partition: "families" #random/families/two_graphs
+test_species: "dog"
+test_k_mers: 3
+test_fam_type: "Novo"
 
 recreate_dataset: False

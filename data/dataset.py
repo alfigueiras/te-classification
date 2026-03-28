@@ -190,6 +190,16 @@ def standardize_selected_columns(dataset, train_mask, exclude_feature_names=None
 
     return dataset, mean, std
 
+def test_standardize(dataset, mean, std):
+    """
+    Standardizes dataset using pre-computed mean and std values.
+    """
+    cols_to_standardize = torch.arange(len(mean), device=dataset.x.device)
+    dataset.x[:, cols_to_standardize] = (
+        dataset.x[:, cols_to_standardize] - mean
+    ) / std
+    return dataset
+
 def dataset_split_by_components(G: nx.Graph, data_full, config):
     """
     Splits the graph into train and test datasets, separating families between them. All the nodes of a family are in the same dataset.

@@ -13,7 +13,7 @@ from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_sco
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch_geometric.loader import NeighborLoader
 
-def train(rank, world_size, dataset, config):
+def train(rank, world_size, dataset, config, test_dataset=None):
     
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
@@ -46,22 +46,21 @@ def train(rank, world_size, dataset, config):
         num_workers=4,
     )
 
-    val_sampler = torch.utils.data.distributed.DistributedSampler(
-        dataset.test_mask.nonzero(as_tuple=True)[0],
-        num_replicas=world_size,
-        rank=rank,
-        shuffle=False,
-    )
+    if rank==0:
+        if config["partition"]!="two_graphs":
+            test_dataset=dataset
 
-    test_loader = NeighborLoader(
-        dataset,
-        input_nodes=None,  # Sampler handles it
-        num_neighbors=[-1, -1],
-        batch_size=config['batch_size'],
-        sampler=val_sampler,
-        filter_per_worker=True,
-        shuffle=False
-    )
+        test_loader = NeighborLoader(
+            test_dataset,
+            input_nodes=test_dataset.test_mask,
+            num_neighbors=[-1, -1],
+            batch_size=config['batch_size'],
+            shuffle=False,
+            filter_per_worker=True,
+            num_workers=4,
+        )
+    else:
+        test_loader=None
 
     optimizer = optim.Adam(model.parameters(), lr=config['learning_rate'])
     criterion = FocalLoss(alpha=config['focal_loss_alpha'], gamma=config['focal_loss_gamma']) if config['use_focal_loss'] else nn.CrossEntropyLoss()
@@ -81,13 +80,14 @@ def train(rank, world_size, dataset, config):
 
     while epoch <= config['epochs']:
         train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device, run)
-        metrics = test_gnn_epoch(epoch, model, test_loader, criterion, device, run)
         if rank==0:
+            metrics = test_gnn_epoch(epoch, model, test_loader, criterion, device, run)
             if epoch % config['save_interval'] == 0:
                 save_checkpoint(run, epoch, model, "results", config['model'])
             if metrics['test/f1'] > best_f1:
                 best_epoch, best_f1 = save_best(run, best_epoch, epoch, model, best_f1, metrics['test/f1'], "results", config['model'])
         
+        dist.barrier()
         epoch += 1
 
     if rank==0:
