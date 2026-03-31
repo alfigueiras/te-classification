@@ -1,6 +1,6 @@
 from logs.checkpoint import save_checkpoint, save_best
 from logs.logging import log_metrics, log_confusion_matrix, init_mlflow
-from models.att_models import GAT_Kmer_Classifier, GATv2Conv_Kmer_Classifier, GraphTransformer_Kmer_Classifier, SAGEConv_Kmer_Classifier 
+from models.att_models import GAT_Kmer_Classifier, GATv2Conv_Kmer_Classifier, GraphTransformer_Kmer_Classifier, SAGEConv_Kmer_Classifier, GIN_Kmer_Classifier
 from models.loss import FocalLoss
 
 import torch
@@ -33,6 +33,8 @@ def train(rank, world_size, dataset, config, test_dataset=None):
         model = GATv2Conv_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers'], use_dnabert_proj=use_dnabert_proj, dnabert_proj_dim=config['dnabert_proj_dim']).to(device)
     elif config['model'] == 'SAGE':
         model = SAGEConv_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers'], use_dnabert_proj=use_dnabert_proj, dnabert_proj_dim=config['dnabert_proj_dim']).to(device)
+    elif config['model'] == 'GIN':
+        model = GIN_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers'], use_dnabert_proj=use_dnabert_proj, dnabert_proj_dim=config['dnabert_proj_dim']).to(device)
     elif config['model'] == 'GraphTransformer':
         model = GraphTransformer_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers']).to(device)
     else:
