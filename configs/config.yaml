@@ -7,9 +7,10 @@ seed: 42
 run_test: false
 save_interval: 5
 
-model: "GATv2" # GAT/GATv2/GraphTransformer
+model: "GATv2" # GAT/GATv2/GraphTransformer/SAGE
 embedding_dim: 512
 hidden_dim: 768
+dnabert_proj_dim: 128
 heads: 4
 dropout_p: 0.4
 edge_dropout_p: 0.2
