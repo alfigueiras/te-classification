@@ -1,5 +1,6 @@
 from utils.graph_utils import create_digraph_new
 from logs.checkpoint import filter_counter_by_keys
+from data.dnabert import compute_or_load_dnabert_embeddings
 
 import os 
 import random
@@ -50,24 +51,32 @@ def create_dataset(config):
 
     undirected_G=create_digraph_new(node_path, edge_path, add_in_superbubble_atr=True, add_in_local_cluster_atr=True, zero_column=zero_column, kmers=config['k_mers'], disable_tqdm=True, k_core_val=k_core_val)
 
-    # Convert to undirected graph
-    # undirected_G=nx.Graph()
-    # undirected_G.add_nodes_from(G.nodes(data=True))
-    # undirected_G.add_edges_from(G.edges())
-
     pickle.dump(undirected_G, open(f"data/processed/graph_{config['species']}{str(config['k_mers'])}{config['fam_type']}.pickle", 'wb'))
+    # get dnabert embeddings
+
+    sequences=[]
+    node_ids=[]
+
+    for node, data in undirected_G.nodes(data=True):
+        sequences.append(data["unitig"])
+        node_ids.append(node)
+    
+    embeddings, saved=compute_or_load_dnabert_embeddings(sequences=sequences, save_path=f"data/processed/{config['species']}_dnabert.pt", node_ids=node_ids, force_recompute=config["recreate_dataset"])
+
+    # just in case the order changed for some reason
+    node_ids=saved["node_ids"]
 
     print(f"Number of nodes: {undirected_G.number_of_nodes()}")
     print(f"Creating torch dataset.")
 
     # Create torch dataset and masks for training and testing
-    dataset=data_to_torch(undirected_G, config['k_mers'])
+    dataset=data_to_torch(undirected_G, config['k_mers'], embeddings, node_ids)
     torch.save(dataset, f"data/processed/{config['species']}{str(config['k_mers'])}{config['fam_type']}.pt")
 
     return dataset, undirected_G
 
 
-def data_to_torch(undirected_G, k_mers):
+def data_to_torch(undirected_G, k_mers, embeddings, node_ids):
     g_node_attrs=['in_superbubble', 'in_superbubble_chain', 'is_superbubble_boundary', 'in_local_cluster', 'weight', 'abundance']
 
     base_features = [
@@ -103,15 +112,30 @@ def data_to_torch(undirected_G, k_mers):
     y = dataset.x[:, -1].to(torch.float32)
     x = dataset.x[:, :-1].to(torch.float32)
 
-   #columns_to_standardize = list(range(4, len(g_node_attrs)))
+    # dnabert embeddings
+    nx_node_order = list(undirected_G.nodes())
+
+    # map node_id -> embedding
+    emb_dict = {nid: emb for nid, emb in zip(node_ids, embeddings)}
+
+    # reorder embeddings to match PyG order
+    embeddings_ordered = torch.stack(
+        [emb_dict[n] for n in nx_node_order],
+        dim=0
+    )
+
+    x = torch.cat([x, embeddings_ordered], dim=1)
+
+    dnabert_feature_names = [f"dnabert_{i}" for i in range(embeddings.shape[1])]
 
     dataset = Data(x=x, y=y, edge_index=dataset.edge_index)
 
-    dataset.feature_names = g_node_attrs[:-1]
+    dataset.feature_names = g_node_attrs[:-1] + dnabert_feature_names
     dataset.base_features = base_features
     dataset.alg_features = alg_features
     dataset.struct_features = struct_features_names
     dataset.kmer_features = k_mer_features
+    dataset.dnabert_features = dnabert_feature_names
 
     return dataset
 
@@ -190,11 +214,23 @@ def standardize_selected_columns(dataset, train_mask, exclude_feature_names=None
 
     return dataset, mean, std
 
-def test_standardize(dataset, mean, std):
+def test_standardize(dataset, mean, std, exclude_feature_names):
     """
     Standardizes dataset using pre-computed mean and std values.
     """
-    cols_to_standardize = torch.arange(len(mean), device=dataset.x.device)
+    if exclude_feature_names is None:
+        exclude_feature_names = []
+
+    # columns to standardize
+    cols_to_standardize = [
+        i for i, f in enumerate(dataset.feature_names)
+        if f not in exclude_feature_names
+    ]
+
+    if len(cols_to_standardize) == 0:
+        return dataset, None, None
+    
+    cols_to_standardize = torch.tensor(cols_to_standardize, device=dataset.x.device)
     dataset.x[:, cols_to_standardize] = (
         dataset.x[:, cols_to_standardize] - mean
     ) / std

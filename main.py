@@ -1,4 +1,3 @@
-import mlflow
 from configs.default import get_config
 from data.dataset import create_dataset, dataset_split_by_components, standardize_selected_columns, random_dataset_split, test_standardize
 from models.train import train
@@ -8,6 +7,7 @@ import pickle
 import torch
 import torch.multiprocessing as mp
 import numpy as np
+import mlflow
 
 def main(config=None):
 
@@ -86,12 +86,13 @@ def main(config=None):
     #standardize
     if config["features_subset"]!="none":
         exclude = [f for f in dataset.alg_features if f in dataset.feature_names]
+        exclude += [f for f in dataset.dnabert_features if f in dataset.feature_names]
         dataset,mean,std=standardize_selected_columns(dataset, dataset.train_mask, exclude_feature_names=exclude)
         dataset.x_train_mean=mean
         dataset.x_train_std=std
 
         if config["partition"]=="two_graphs":
-            test_dataset=test_standardize(test_dataset, mean, std)
+            test_dataset=test_standardize(test_dataset, mean, std, exclude_feature_names=exclude)
 
     if config["partition"]!="two_graphs":
         test_dataset=None
