@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from configs.default import get_config
 from data.dataset import create_dataset, dataset_split_by_components, standardize_selected_columns, random_dataset_split, test_standardize
 from models.train import train
@@ -7,9 +9,10 @@ import pickle
 import torch
 import torch.multiprocessing as mp
 import numpy as np
-import mlflow
+import optuna
+import json
 
-def main(config=None):
+def run_trial(config=None):
 
     gpu_ids = config.get("gpu_ids", "all")  # e.g. [0,2,3]
 
@@ -110,14 +113,53 @@ def main(config=None):
     print("Starting training...")
     mp.spawn(train, args=(world_size, dataset, config, test_dataset), nprocs=world_size, join=True)
 
+def objective(trial):
+    base_config = get_config()
+    config = deepcopy(base_config)
+
+    # sample hyperparameters
+    config["learning_rate"] = trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True)
+    config["hidden_dim"] = trial.suggest_categorical("hidden_dim", [256, 512, 768])
+    config["embedding_dim"] = trial.suggest_categorical("embedding_dim", [256, 512, 768])
+    config["dropout_p"] = trial.suggest_float("dropout_p", 0.1, 0.5)
+    config["edge_dropout_p"] = trial.suggest_float("edge_dropout_p", 0.2, 0.5)
+    config["num_layers"] = trial.suggest_categorical("num_layers", [2, 3])
+
+    if config["model"] in ["GAT", "GATv2"]:
+        config["heads"] = trial.suggest_categorical("heads", [1, 2, 4])
+
+    if config["use_focal_loss"]:
+        config["focal_loss_alpha"] = trial.suggest_float("focal_loss_alpha", 0.1, 0.9)
+        config["focal_loss_gamma"] = trial.suggest_float("focal_loss_gamma", 1.0, 5.0)
+
+    config["trial_number"] = trial.number
+    config["mlflow_run_name"] = f"trial_{trial.number}"
+    config["result_path"] = f"results/trial_{trial.number}_result.json"
+
+    run_trial(config)
+
+    with open(config["result_path"], "r") as f:
+        result = json.load(f)
+
+    trial.set_user_attr("best_epoch", result["best_epoch"])
+    trial.set_user_attr("best_f1", result["best_f1"])
+    trial.set_user_attr("final_test_f1", result["final_test_f1"])
+
+    return result["final_test_f1"]
+
+def run_hpo(n_trials=20):
+    study = optuna.create_study(direction="maximize", study_name="gnn_te_classification")
+    study.optimize(objective, n_trials=n_trials)
+
+    print("Best trial:")
+    print(f"  Value: {study.best_trial.value}")
+    print("  Params:")
+    for k, v in study.best_trial.params.items():
+        print(f"    {k}: {v}")
+
 if __name__ == "__main__":
     config=get_config()
-
-    print(config['learning_rate'])
-    try:
-        main(config)
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        raise e
-    finally:
-        mlflow.end_run()
+    if config["use_hpo"]:
+        run_hpo(n_trials=config["n_trials"])
+    else:
+        run_trial(config)

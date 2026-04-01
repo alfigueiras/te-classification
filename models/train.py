@@ -1,3 +1,5 @@
+from flask import json
+
 from logs.checkpoint import save_checkpoint, save_best
 from logs.logging import log_metrics, log_confusion_matrix, init_mlflow
 from models.att_models import GAT_Kmer_Classifier, GATv2Conv_Kmer_Classifier, GraphTransformer_Kmer_Classifier, SAGEConv_Kmer_Classifier, GIN_Kmer_Classifier
@@ -79,8 +81,27 @@ def train(rank, world_size, dataset, config, test_dataset=None):
 
     if rank == 0:
         init_mlflow()
-        mlflow.log_params({"world_size": dist.get_world_size()})
-        run = mlflow.active_run()
+
+        run = mlflow.start_run(run_name=config.get("mlflow_run_name", None))
+        mlflow.log_params({
+            "trial_number": config.get("trial_number", -1),
+            "model": config["model"],
+            "learning_rate": config["learning_rate"],
+            "hidden_dim": config["hidden_dim"],
+            "embedding_dim": config["embedding_dim"],
+            "dropout_p": config["dropout_p"],
+            "edge_dropout_p": config["edge_dropout_p"],
+            "num_layers": config["num_layers"],
+            "batch_size": config["batch_size"],
+            "world_size": dist.get_world_size(),
+            "features_subset": config["features_subset"],
+            "partition": config["partition"],
+        })
+        if "heads" in config:
+            mlflow.log_param("heads", config["heads"])
+        if config["use_focal_loss"]:
+            mlflow.log_param("focal_loss_alpha", config["focal_loss_alpha"])
+            mlflow.log_param("focal_loss_gamma", config["focal_loss_gamma"])
     else:
         run = None
 
@@ -88,6 +109,7 @@ def train(rank, world_size, dataset, config, test_dataset=None):
         train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device, run)
         if rank==0:
             metrics = test_gnn_epoch(epoch, model, test_loader, criterion, device, run)
+            final_test_f1 = metrics["test/f1"]   # overwrite every epoch, so last one remains
             if epoch % config['save_interval'] == 0:
                 save_checkpoint(run, epoch, model, "results", config['model'])
             if metrics['test/f1'] > best_f1:
@@ -96,7 +118,17 @@ def train(rank, world_size, dataset, config, test_dataset=None):
         dist.barrier()
         epoch += 1
 
-    if rank==0:
+    if rank == 0:
+        with open(config["result_path"], "w") as f:
+            json.dump({
+                "final_test_f1": float(final_test_f1),
+                "best_f1": float(best_f1),
+                "best_epoch": int(best_epoch),
+            }, f)
+
+        mlflow.log_metric("final_test_f1", final_test_f1)
+        mlflow.log_metric("best_test_f1", best_f1)
+        mlflow.log_metric("best_epoch", best_epoch)
         mlflow.end_run()
 
     dist.destroy_process_group()
