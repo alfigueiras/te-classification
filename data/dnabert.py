@@ -2,8 +2,6 @@ import os
 import torch
 import os
 
-os.environ["USE_TRITON"] = "0"
-
 from transformers import AutoTokenizer, AutoModel
 from tqdm import tqdm
 
@@ -11,7 +9,7 @@ class DNABERTEmbedder:
     def __init__(self,model_name="zhihan1996/DNABERT-2-117M"):  
         
         if torch.cuda.is_available():
-            self.device="cuda"
+            self.device="cuda:1"
         elif torch.backends.mps.is_available():
             self.device="mps"
         else:
@@ -21,13 +19,21 @@ class DNABERTEmbedder:
             model_name,
             trust_remote_code=True,
         )
+
+        #config = BertConfig.from_pretrained("zhihan1996/DNABERT-2-117M")
+
+        #if getattr(config, "pad_token_id", None) is None:
+        #    config.pad_token_id = self.tokenizer.pad_token_id
+
+        print("default device:", torch.get_default_device())
+        print("cuda available:", torch.cuda.is_available())
+
         self.model = AutoModel.from_pretrained(
             model_name,
             trust_remote_code=True,
-            attn_implementation="eager",
-            torch_dtype=torch.float32
-        ).to(self.device)
+        )
 
+        self.model.to(self.device)
         self.model.eval()
 
     @staticmethod
@@ -75,9 +81,11 @@ class DNABERTEmbedder:
 
             encoded = {k: v.to(self.device) for k, v in encoded.items()}
 
-            outputs = self.model(**encoded)
+            outputs = self.model(**encoded, return_dict=True)
+            last_hidden_state = outputs.last_hidden_state if hasattr(outputs, "last_hidden_state") else outputs[0]
+
             chunk_embeddings = self.mean_pool(
-                outputs.last_hidden_state,
+                last_hidden_state,
                 encoded["attention_mask"]
             )
 

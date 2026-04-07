@@ -4,22 +4,21 @@ import os
 import json 
 from collections import Counter
 
-def save_checkpoint(run, epoch, model, path, name="model"):
-    os.makedirs(f"{path}/{run.data.tags.get('mlflow.runName')}", exist_ok=True)
-    save_path = f"{path}/{run.data.tags.get('mlflow.runName')}/{name}_{epoch}.pt"
+def save_checkpoint(epoch, model, path, name="model"):
+    os.makedirs(path, exist_ok=True)
+    save_path = f"{path}/{name}_{epoch}.pt"
     torch.save(model.state_dict(), save_path)
-    mlflow.pytorch.log_model(model, name=f"{name}_{epoch}")
+    #mlflow.pytorch.log_model(model, name=f"{name}_{epoch}")
 
-def save_best(run, best_epoch, epoch, model, best_val, current_val, path, name="model", sum_name="best_test_f1"):
+def save_best(best_epoch, epoch, model, best_val, current_val, path, name="model", sum_name="best_test_f1"):
     
     if current_val > best_val:
-        run_name = run.data.tags.get("mlflow.runName")
-        os.makedirs(f"{path}/{run_name}", exist_ok=True)
-        save_path = f"{path}/{run_name}/best_{name}.pt"
+        os.makedirs(path, exist_ok=True)
+        save_path = f"{path}/best_{name}.pt"
 
         torch.save(model.state_dict(), save_path)
         mlflow.log_metric(sum_name, current_val, step=epoch)
-        mlflow.pytorch.log_model(model, name=f"best_{name}")
+        #mlflow.pytorch.log_model(model, name=f"best_{name}")
         return epoch, current_val
 
     return best_epoch, best_val

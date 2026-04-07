@@ -1,29 +1,29 @@
-learning_rate: 0.015
+learning_rate: 0.007
 epochs: 50
 batch_size: 32768
 train_split: 0.8
 test_split: 0.2
 seed: 42
 run_test: false
-save_interval: 5
+save_interval: 25
 
-model: "GATv2" # GAT/GATv2/GraphTransformer/SAGE
+model: "GAT" # GAT/GATv2/GraphTransformer/SAGE
 embedding_dim: 512
 hidden_dim: 768
 dnabert_proj_dim: 128
-heads: 4
+heads: 2
 dropout_p: 0.4
 edge_dropout_p: 0.2
-num_layers: 2
+num_layers: 3
 
 focal_loss_alpha: 1.0
-focal_loss_gamma: 2.0
+focal_loss_gamma: 3.0
 use_focal_loss: true
 
-gpu_ids: "all" #list of gpu ids to use, "all" to use all available gpus
+gpu_ids: "all"  #list of gpu ids to use, "all" to use all available gpus
 
 checkpoint_dir: "./checkpoints"
-project_name: "te-classification-gatv2-mus3novo"
+project_name: "te-classification-tests"
 
 species: "mouse"  # mouse/dog/dro
 k_mers: 3         # 0/3/4/5 
@@ -35,5 +35,5 @@ test_k_mers: 3
 test_fam_type: "Novo"
 
 recreate_dataset: False
-run_hpo: False
-n_trials: 100
+use_hpo: False
+n_trials: 50

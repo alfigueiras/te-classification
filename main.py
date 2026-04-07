@@ -134,7 +134,7 @@ def objective(trial):
 
     config["trial_number"] = trial.number
     config["mlflow_run_name"] = f"trial_{trial.number}"
-    config["result_path"] = f"results/trial_{trial.number}_result.json"
+    config["result_path"] = f"results/{config.get('project_name', 'default')}/trial_{trial.number}_result.json"
 
     run_trial(config)
 

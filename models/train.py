@@ -80,9 +80,16 @@ def train(rank, world_size, dataset, config, test_dataset=None):
     os.makedirs("results", exist_ok=True)
 
     if rank == 0:
-        init_mlflow()
+        init_mlflow(config["project_name"])
 
         run = mlflow.start_run(run_name=config.get("mlflow_run_name", None))
+        if not config["use_hpo"]:
+            result_path = f"results/{config.get('project_name', 'default')}/{run.data.tags.get('mlflow.runName')}"
+        else: 
+            result_path = f"results/{config.get('project_name', 'default')}/trial_{config.get('trial_number', -1)}"
+
+        config["result_path"] = result_path
+
         mlflow.log_params({
             "trial_number": config.get("trial_number", -1),
             "model": config["model"],
@@ -106,20 +113,20 @@ def train(rank, world_size, dataset, config, test_dataset=None):
         run = None
 
     while epoch <= config['epochs']:
-        train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device, run)
+        train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device)
         if rank==0:
-            metrics = test_gnn_epoch(epoch, model, test_loader, criterion, device, run)
+            metrics = test_gnn_epoch(epoch, model, test_loader, criterion, device)
             final_test_f1 = metrics["test/f1"]   # overwrite every epoch, so last one remains
             if epoch % config['save_interval'] == 0:
-                save_checkpoint(run, epoch, model, "results", config['model'])
+                save_checkpoint(epoch, model, config["result_path"], config['model'])
             if metrics['test/f1'] > best_f1:
-                best_epoch, best_f1 = save_best(run, best_epoch, epoch, model, best_f1, metrics['test/f1'], "results", config['model'])
+                best_epoch, best_f1 = save_best(best_epoch, epoch, model, best_f1, metrics['test/f1'], config["result_path"], config['model'])
         
-        dist.barrier()
         epoch += 1
 
     if rank == 0:
-        with open(config["result_path"], "w") as f:
+        path=f"{config['result_path']}/final_result.json"
+        with open(path, "w") as f:
             json.dump({
                 "final_test_f1": float(final_test_f1),
                 "best_f1": float(best_f1),
@@ -135,7 +142,7 @@ def train(rank, world_size, dataset, config, test_dataset=None):
 
     print(f"Best test F1 score: {best_f1:.4f} at epoch {best_epoch}")
     
-def train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device, run):
+def train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device):
     model.train()
     total_loss = 0
     all_probs = torch.empty(0)
@@ -169,10 +176,10 @@ def train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device, ru
 
     if dist.get_rank() == 0:
         metrics=compute_metrics(epoch, all_probs, all_preds, all_targets, avg_loss, split="train")
-        log_metrics(run, metrics)
-        log_confusion_matrix(run, all_targets, all_preds, split="train")
+        log_metrics(metrics, step=epoch)
+        log_confusion_matrix(all_targets, all_preds, split="train", step=epoch)
 
-def test_gnn_epoch(epoch, model, test_loader, criterion, device, run):
+def test_gnn_epoch(epoch, model, test_loader, criterion, device):
     model.eval()
     total_loss = 0
     all_probs = torch.empty(0)
@@ -199,14 +206,13 @@ def test_gnn_epoch(epoch, model, test_loader, criterion, device, run):
             total_loss += loss.item()
 
     avg_loss = total_loss / len(test_loader)
-    all_probs, all_preds, all_targets, avg_loss = gather_all_predictions(all_probs, all_preds, all_targets, avg_loss)
 
     metrics={}
     
     if dist.get_rank() == 0:
         metrics=compute_metrics(epoch, all_probs, all_preds, all_targets, avg_loss, split="test")
-        log_metrics(run, metrics)
-        log_confusion_matrix(run, all_targets, all_preds, split="test")
+        log_metrics(metrics, step=epoch)
+        log_confusion_matrix(all_targets, all_preds, split="test", step=epoch)
     return metrics
 
 def gather_all_predictions(local_probs, local_preds, local_targets, local_avg_loss):

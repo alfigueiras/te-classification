@@ -441,10 +441,6 @@ def incremental_conductance(graph: nx.Graph, pagerank: list, npy_file_name: str 
                 cut_edges += 1
             else:  # If the neighbor is in the subset, remove this as it was a "cut edge"
                 cut_edges -= 1
-        
-        if i%50000==0 and i!=0:
-            with open(npy_file_name, 'wb') as f:
-                np.save(f,np.array(conductance_vals))
 
         # Compute conductance
         conductance = cut_edges / subset_vol
