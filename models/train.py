@@ -1,5 +1,3 @@
-from flask import json
-
 from logs.checkpoint import save_checkpoint, save_best
 from logs.logging import log_metrics, log_confusion_matrix, init_mlflow
 from models.att_models import GAT_Kmer_Classifier, GATv2Conv_Kmer_Classifier, GraphTransformer_Kmer_Classifier, SAGEConv_Kmer_Classifier, GIN_Kmer_Classifier
@@ -9,6 +7,7 @@ import torch
 import torch.distributed as dist
 import os
 import mlflow
+import json
 
 from torch import nn,optim
 from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
@@ -70,6 +69,7 @@ def train(rank, world_size, dataset, config, test_dataset=None):
     else:
         test_loader=None
 
+    early_stopper = EarlyStop(patience=config.get("early_stop_patience", 10), min_delta=config.get("early_stop_min_delta", 0))
     optimizer = optim.Adam(model.parameters(), lr=config['learning_rate'])
     criterion = FocalLoss(alpha=config['focal_loss_alpha'], gamma=config['focal_loss_gamma']) if config['use_focal_loss'] else nn.CrossEntropyLoss()
     epoch = 1
@@ -114,14 +114,29 @@ def train(rank, world_size, dataset, config, test_dataset=None):
 
     while epoch <= config['epochs']:
         train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device)
+        stop_flag = torch.tensor([0], device=device)
         if rank==0:
             metrics = test_gnn_epoch(epoch, model, test_loader, criterion, device)
+            
             final_test_f1 = metrics["test/f1"]   # overwrite every epoch, so last one remains
-            if epoch % config['save_interval'] == 0:
+            stop = early_stopper.step(metrics['test/loss'])
+
+            if stop:
+                print(f"Early stopping at epoch {epoch}")
                 save_checkpoint(epoch, model, config["result_path"], config['model'])
-            if metrics['test/f1'] > best_f1:
-                best_epoch, best_f1 = save_best(best_epoch, epoch, model, best_f1, metrics['test/f1'], config["result_path"], config['model'])
-        
+                stop_flag[0] = 1
+            else:
+                if epoch % config['save_interval'] == 0:
+                    save_checkpoint(epoch, model, config["result_path"], config['model'])
+
+                if metrics['test/f1'] > best_f1:
+                    best_epoch, best_f1 = save_best(best_epoch, epoch, model, best_f1, metrics['test/f1'], config["result_path"], config['model'])
+
+        if world_size > 1:
+            dist.broadcast(stop_flag, src=0)
+            if stop_flag.item() == 1:
+                break
+            
         epoch += 1
 
     if rank == 0:
@@ -258,3 +273,17 @@ def compute_metrics(epoch, all_probs, all_preds, all_targets, avg_loss, split):
 
     return metrics
 
+class EarlyStop:
+    def __init__(self, patience, min_delta=0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.count = 0 
+        self.best_loss = float('inf')
+    
+    def step(self, val_loss):
+        if val_loss + self.min_delta < self.best_loss:
+            self.best_loss = val_loss
+            self.count = 0
+        elif val_loss + self.min_delta > self.best_loss:
+            self.count += 1
+        return self.count >= self.patience

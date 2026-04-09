@@ -41,13 +41,13 @@ def run_trial(config=None):
     elif config["features_subset"]=="original":
         selected_features=dataset.base_features
     elif config["features_subset"]=="structural":
-        selected_features=dataset.base_features+dataset.structural_features
+        selected_features=dataset.base_features+dataset.struct_features
     elif config["features_subset"]=="alg":
-        selected_features=dataset.base_features+dataset.structural_features+dataset.alg_features
+        selected_features=dataset.base_features+dataset.struct_features+dataset.alg_features
     elif config["features_subset"]=="dnabert":
-        selected_features=dataset.base_features+dataset.structural_features+dataset.alg_features+dataset.dnabert_features
+        selected_features=dataset.base_features+dataset.struct_features+dataset.alg_features+dataset.dnabert_features
     elif config["features_subset"]=="k_mer_counts":
-        selected_features=dataset.base_features+dataset.structural_features+dataset.alg_features+dataset.kmer_features
+        selected_features=dataset.base_features+dataset.struct_features+dataset.alg_features+dataset.kmer_features
 
     if config["features_subset"]!="all":
         indices = [dataset.feature_names.index(f) for f in selected_features]
@@ -119,11 +119,11 @@ def objective(trial):
 
     # sample hyperparameters
     config["learning_rate"] = trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True)
-    config["hidden_dim"] = trial.suggest_categorical("hidden_dim", [256, 512, 768])
-    config["embedding_dim"] = trial.suggest_categorical("embedding_dim", [256, 512, 768])
+    config["hidden_dim"] = trial.suggest_categorical("hidden_dim", [512, 768, 1024])
+    config["embedding_dim"] = trial.suggest_categorical("embedding_dim", [512, 768, 1024])
     config["dropout_p"] = trial.suggest_float("dropout_p", 0.1, 0.5)
     config["edge_dropout_p"] = trial.suggest_float("edge_dropout_p", 0.2, 0.5)
-    config["num_layers"] = trial.suggest_categorical("num_layers", [2, 3])
+    config["num_layers"] = trial.suggest_int("num_layers", [2, 5])
 
     if config["model"] in ["GAT", "GATv2"]:
         config["heads"] = trial.suggest_categorical("heads", [1, 2, 4])

@@ -1,4 +1,4 @@
-learning_rate: 0.007
+learning_rate: 0.009
 epochs: 50
 batch_size: 32768
 train_split: 0.8
@@ -6,15 +6,17 @@ test_split: 0.2
 seed: 42
 run_test: false
 save_interval: 25
+early_stop_patience: 5
+early_stop_min_delta: 0
 
-model: "GAT" # GAT/GATv2/GraphTransformer/SAGE
-embedding_dim: 512
-hidden_dim: 768
+model: "GIN" # GAT/GATv2/GraphTransformer/SAGE/GIN
+embedding_dim: 1024
+hidden_dim: 1024
 dnabert_proj_dim: 128
 heads: 2
 dropout_p: 0.4
 edge_dropout_p: 0.2
-num_layers: 3
+num_layers: 5
 
 focal_loss_alpha: 1.0
 focal_loss_gamma: 3.0
@@ -25,11 +27,11 @@ gpu_ids: "all"  #list of gpu ids to use, "all" to use all available gpus
 checkpoint_dir: "./checkpoints"
 project_name: "te-classification-tests"
 
-species: "mouse"  # mouse/dog/dro
+species: "dro"  # mouse/dog/dro
 k_mers: 3         # 0/3/4/5 
 fam_type: "Novo"  # "Novo"/""
-features_subset: "all" #none/original/structural/alg/kmer_counts/dnabert/all
-partition: "families" #random/families/two_graphs
+features_subset: "all" #none/original/structural/alg/k_mer_counts/dnabert/all
+partition: "random" #random/families/two_graphs
 test_species: "dog"
 test_k_mers: 3
 test_fam_type: "Novo"
