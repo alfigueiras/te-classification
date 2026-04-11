@@ -43,9 +43,12 @@ def train(rank, world_size, dataset, config, test_dataset=None):
     
     model = DDP(model, device_ids=[rank])
 
+    train_input_nodes = dataset.train_mask.nonzero(as_tuple=True)[0]
+    train_input_nodes = train_input_nodes[rank::world_size]
+
     train_loader = NeighborLoader(
         dataset,
-        input_nodes=dataset.train_mask,
+        input_nodes=train_input_nodes,
         num_neighbors=[-1, -1],
         batch_size=config['batch_size'],
         shuffle=True,
@@ -76,6 +79,7 @@ def train(rank, world_size, dataset, config, test_dataset=None):
 
     best_f1=0
     best_epoch = 0
+    final_test_f1 = float("-inf")
 
     os.makedirs("results", exist_ok=True)
 
@@ -103,6 +107,7 @@ def train(rank, world_size, dataset, config, test_dataset=None):
             "world_size": dist.get_world_size(),
             "features_subset": config["features_subset"],
             "partition": config["partition"],
+            "dataset": config["species"]
         })
         if "heads" in config:
             mlflow.log_param("heads", config["heads"])
@@ -116,7 +121,7 @@ def train(rank, world_size, dataset, config, test_dataset=None):
         train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device)
         stop_flag = torch.tensor([0], device=device)
         if rank==0:
-            metrics = test_gnn_epoch(epoch, model, test_loader, criterion, device)
+            metrics = test_gnn_epoch(epoch, model.module, test_loader, criterion, device)
             
             final_test_f1 = metrics["test/f1"]   # overwrite every epoch, so last one remains
             stop = early_stopper.step(metrics['test/loss'])
@@ -140,7 +145,7 @@ def train(rank, world_size, dataset, config, test_dataset=None):
         epoch += 1
 
     if rank == 0:
-        path=f"{config['result_path']}/final_result.json"
+        path=f"{config['result_path']}/final_result_{config.get('trial_number', -1)}.json"
         with open(path, "w") as f:
             json.dump({
                 "final_test_f1": float(final_test_f1),
@@ -232,7 +237,7 @@ def test_gnn_epoch(epoch, model, test_loader, criterion, device):
 
 def gather_all_predictions(local_probs, local_preds, local_targets, local_avg_loss):
     if not dist.is_initialized():
-        return local_preds, local_targets
+        return local_probs, local_preds, local_targets, local_avg_loss
 
     world_size = dist.get_world_size()
 

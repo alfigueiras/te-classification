@@ -123,7 +123,7 @@ def objective(trial):
     config["embedding_dim"] = trial.suggest_categorical("embedding_dim", [512, 768, 1024])
     config["dropout_p"] = trial.suggest_float("dropout_p", 0.1, 0.5)
     config["edge_dropout_p"] = trial.suggest_float("edge_dropout_p", 0.2, 0.5)
-    config["num_layers"] = trial.suggest_int("num_layers", [2, 5])
+    config["num_layers"] = trial.suggest_int("num_layers", 2, 5)
 
     if config["model"] in ["GAT", "GATv2"]:
         config["heads"] = trial.suggest_categorical("heads", [1, 2, 4])
@@ -134,11 +134,10 @@ def objective(trial):
 
     config["trial_number"] = trial.number
     config["mlflow_run_name"] = f"trial_{trial.number}"
-    config["result_path"] = f"results/{config.get('project_name', 'default')}/trial_{trial.number}_result.json"
 
     run_trial(config)
 
-    with open(config["result_path"], "r") as f:
+    with open(f"{config['result_path']}/final_result_{config.get('trial_number', -1)}.json", "r") as f:
         result = json.load(f)
 
     trial.set_user_attr("best_epoch", result["best_epoch"])
