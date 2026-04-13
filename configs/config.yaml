@@ -9,7 +9,7 @@ save_interval: 25
 early_stop_patience: 10
 early_stop_min_delta: 0
 
-model: "GAT" # GAT/GATv2/GraphTransformer/SAGE/GIN
+model: "GIN" # GAT/GATv2/GraphTransformer/SAGE/GIN
 embedding_dim: 1024
 hidden_dim: 1024
 dnabert_proj_dim: 128
@@ -25,9 +25,9 @@ use_focal_loss: true
 gpu_ids: "all"  #list of gpu ids to use, "all" to use all available gpus
 
 checkpoint_dir: "./checkpoints"
-project_name: "mus-gat-all"
+project_name: "dro-gin-all"
 
-species: "mouse"  # mouse/dog/dro
+species: "dro"  # mouse/dog/dro
 k_mers: 3         # 0/3/4/5 
 fam_type: "Novo"  # "Novo"/""
 features_subset: "all" #none/original/structural/alg/k_mer_counts/dnabert/all

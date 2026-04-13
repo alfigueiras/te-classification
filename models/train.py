@@ -15,152 +15,164 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch_geometric.loader import NeighborLoader
 
 def train(rank, world_size, dataset, config, test_dataset=None):
-    
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
-    torch.cuda.set_device(rank)
+    try:
+        os.environ['MASTER_ADDR'] = 'localhost'
+        os.environ["MASTER_PORT"] = str(12355 + config.get('trial_number', 0))
+        dist.init_process_group("nccl", rank=rank, world_size=world_size)
+        torch.cuda.set_device(rank)
 
-    device = torch.device(f'cuda:{rank}')
+        device = torch.device(f'cuda:{rank}')
 
-    print(f'Running on rank {rank}, using GPU {torch.cuda.current_device()}: {torch.cuda.get_device_name(rank)}')
+        print(f'Running on rank {rank}, using GPU {torch.cuda.current_device()}: {torch.cuda.get_device_name(rank)}')
 
-    # Model initialization
-    use_dnabert_proj = config["features_subset"] in ["all", "dnabert"]
+        # Model initialization
+        use_dnabert_proj = config["features_subset"] in ["all", "dnabert"]
 
-    if config['model'] == 'GAT':
-        model = GAT_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers'], use_dnabert_proj=use_dnabert_proj, dnabert_proj_dim=config['dnabert_proj_dim']).to(device)
-    elif config['model'] == 'GATv2':
-        model = GATv2Conv_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers'], use_dnabert_proj=use_dnabert_proj, dnabert_proj_dim=config['dnabert_proj_dim']).to(device)
-    elif config['model'] == 'SAGE':
-        model = SAGEConv_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers'], use_dnabert_proj=use_dnabert_proj, dnabert_proj_dim=config['dnabert_proj_dim']).to(device)
-    elif config['model'] == 'GIN':
-        model = GIN_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers'], use_dnabert_proj=use_dnabert_proj, dnabert_proj_dim=config['dnabert_proj_dim']).to(device)
-    elif config['model'] == 'GraphTransformer':
-        model = GraphTransformer_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers']).to(device)
-    else:
-        raise ValueError(f"Unknown model type: {config['model']}")
-    
-    model = DDP(model, device_ids=[rank])
+        if config['model'] == 'GAT':
+            model = GAT_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers'], use_dnabert_proj=use_dnabert_proj, dnabert_proj_dim=config['dnabert_proj_dim']).to(device)
+        elif config['model'] == 'GATv2':
+            model = GATv2Conv_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers'], use_dnabert_proj=use_dnabert_proj, dnabert_proj_dim=config['dnabert_proj_dim']).to(device)
+        elif config['model'] == 'SAGE':
+            model = SAGEConv_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers'], use_dnabert_proj=use_dnabert_proj, dnabert_proj_dim=config['dnabert_proj_dim']).to(device)
+        elif config['model'] == 'GIN':
+            model = GIN_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers'], use_dnabert_proj=use_dnabert_proj, dnabert_proj_dim=config['dnabert_proj_dim']).to(device)
+        elif config['model'] == 'GraphTransformer':
+            model = GraphTransformer_Kmer_Classifier(dataset, embedding_dim=config['embedding_dim'], hidden_dim=config['hidden_dim'], heads=config['heads'], dropout_p=config['dropout_p'], edge_dropout_p=config['edge_dropout_p'], num_layers=config['num_layers']).to(device)
+        else:
+            raise ValueError(f"Unknown model type: {config['model']}")
+        
+        model = DDP(model, device_ids=[rank])
 
-    train_input_nodes = dataset.train_mask.nonzero(as_tuple=True)[0]
-    train_input_nodes = train_input_nodes[rank::world_size]
+        train_input_nodes = dataset.train_mask.nonzero(as_tuple=True)[0]
+        train_input_nodes = train_input_nodes[rank::world_size]
 
-    train_loader = NeighborLoader(
-        dataset,
-        input_nodes=train_input_nodes,
-        num_neighbors=[-1, -1],
-        batch_size=config['batch_size'],
-        shuffle=True,
-        filter_per_worker=True,
-        num_workers=4,
-    )
-
-    if rank==0:
-        if config["partition"]!="two_graphs":
-            test_dataset=dataset
-
-        test_loader = NeighborLoader(
-            test_dataset,
-            input_nodes=test_dataset.test_mask,
+        train_loader = NeighborLoader(
+            dataset,
+            input_nodes=train_input_nodes,
             num_neighbors=[-1, -1],
             batch_size=config['batch_size'],
-            shuffle=False,
-            filter_per_worker=True,
-            num_workers=4,
+            shuffle=True,
+            filter_per_worker=False,
+            num_workers=0,
         )
-    else:
-        test_loader=None
 
-    early_stopper = EarlyStop(patience=config.get("early_stop_patience", 10), min_delta=config.get("early_stop_min_delta", 0))
-    optimizer = optim.Adam(model.parameters(), lr=config['learning_rate'])
-    criterion = FocalLoss(alpha=config['focal_loss_alpha'], gamma=config['focal_loss_gamma']) if config['use_focal_loss'] else nn.CrossEntropyLoss()
-    epoch = 1
-
-    best_f1=0
-    best_epoch = 0
-    final_test_f1 = float("-inf")
-
-    os.makedirs("results", exist_ok=True)
-
-    if rank == 0:
-        init_mlflow(config["project_name"])
-
-        run = mlflow.start_run(run_name=config.get("mlflow_run_name", None))
-        if not config["use_hpo"]:
-            result_path = f"results/{config.get('project_name', 'default')}/{run.data.tags.get('mlflow.runName')}"
-        else: 
-            result_path = f"results/{config.get('project_name', 'default')}/trial_{config.get('trial_number', -1)}"
-
-        config["result_path"] = result_path
-
-        mlflow.log_params({
-            "trial_number": config.get("trial_number", -1),
-            "model": config["model"],
-            "learning_rate": config["learning_rate"],
-            "hidden_dim": config["hidden_dim"],
-            "embedding_dim": config["embedding_dim"],
-            "dropout_p": config["dropout_p"],
-            "edge_dropout_p": config["edge_dropout_p"],
-            "num_layers": config["num_layers"],
-            "batch_size": config["batch_size"],
-            "world_size": dist.get_world_size(),
-            "features_subset": config["features_subset"],
-            "partition": config["partition"],
-            "dataset": config["species"]
-        })
-        if "heads" in config:
-            mlflow.log_param("heads", config["heads"])
-        if config["use_focal_loss"]:
-            mlflow.log_param("focal_loss_alpha", config["focal_loss_alpha"])
-            mlflow.log_param("focal_loss_gamma", config["focal_loss_gamma"])
-    else:
-        run = None
-
-    while epoch <= config['epochs']:
-        train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device)
-        stop_flag = torch.tensor([0], device=device)
         if rank==0:
-            metrics = test_gnn_epoch(epoch, model.module, test_loader, criterion, device)
-            
-            final_test_f1 = metrics["test/f1"]   # overwrite every epoch, so last one remains
-            stop = early_stopper.step(metrics['test/loss'])
+            if config["partition"]!="two_graphs":
+                test_dataset=dataset
 
-            if stop:
-                print(f"Early stopping at epoch {epoch}")
-                save_checkpoint(epoch, model, config["result_path"], config['model'])
-                stop_flag[0] = 1
-            else:
-                if epoch % config['save_interval'] == 0:
+            test_loader = NeighborLoader(
+                test_dataset,
+                input_nodes=test_dataset.test_mask,
+                num_neighbors=[-1, -1],
+                batch_size=config['batch_size'],
+                shuffle=False,
+                filter_per_worker=False,
+                num_workers=0,
+            )
+        else:
+            test_loader=None
+
+        early_stopper = EarlyStop(patience=config.get("early_stop_patience", 10), min_delta=config.get("early_stop_min_delta", 0))
+        optimizer = optim.Adam(model.parameters(), lr=config['learning_rate'])
+        criterion = FocalLoss(alpha=config['focal_loss_alpha'], gamma=config['focal_loss_gamma']) if config['use_focal_loss'] else nn.CrossEntropyLoss()
+        epoch = 1
+
+        best_f1=0
+        best_epoch = 0
+        final_test_f1 = float("-inf")
+
+        os.makedirs("results", exist_ok=True)
+
+        if rank == 0:
+            init_mlflow(config["project_name"])
+
+            run = mlflow.start_run(run_name=config.get("mlflow_run_name", None))
+            if not config["use_hpo"]:
+                result_path = f"results/{config.get('project_name', 'default')}/{run.data.tags.get('mlflow.runName')}"
+            else: 
+                result_path = f"results/{config.get('project_name', 'default')}/trial_{config.get('trial_number', -1)}"
+
+            config["result_path"] = result_path
+
+            mlflow.log_params({
+                "trial_number": config.get("trial_number", -1),
+                "model": config["model"],
+                "learning_rate": config["learning_rate"],
+                "hidden_dim": config["hidden_dim"],
+                "embedding_dim": config["embedding_dim"],
+                "dropout_p": config["dropout_p"],
+                "edge_dropout_p": config["edge_dropout_p"],
+                "num_layers": config["num_layers"],
+                "batch_size": config["batch_size"],
+                "world_size": dist.get_world_size(),
+                "features_subset": config["features_subset"],
+                "partition": config["partition"],
+                "dataset": config["species"]
+            })
+            if "heads" in config:
+                mlflow.log_param("heads", config["heads"])
+            if config["use_focal_loss"]:
+                mlflow.log_param("focal_loss_alpha", config["focal_loss_alpha"])
+                mlflow.log_param("focal_loss_gamma", config["focal_loss_gamma"])
+        else:
+            run = None
+
+        while epoch <= config['epochs']:
+            train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device)
+            stop_flag = torch.tensor([0], device=device)
+            if rank==0:
+                metrics = test_gnn_epoch(epoch, model.module, test_loader, criterion, device)
+                
+                final_test_f1 = metrics["test/f1"]   # overwrite every epoch, so last one remains
+                stop = early_stopper.step(metrics['test/loss'])
+
+                if stop:
+                    print(f"Early stopping at epoch {epoch}")
                     save_checkpoint(epoch, model, config["result_path"], config['model'])
+                    stop_flag[0] = 1
+                else:
+                    if epoch % config['save_interval'] == 0:
+                        save_checkpoint(epoch, model, config["result_path"], config['model'])
 
-                if metrics['test/f1'] > best_f1:
-                    best_epoch, best_f1 = save_best(best_epoch, epoch, model, best_f1, metrics['test/f1'], config["result_path"], config['model'])
+                    if metrics['test/f1'] > best_f1:
+                        best_epoch, best_f1 = save_best(best_epoch, epoch, model, best_f1, metrics['test/f1'], config["result_path"], config['model'])
 
-        if world_size > 1:
-            dist.broadcast(stop_flag, src=0)
-            if stop_flag.item() == 1:
-                break
-            
-        epoch += 1
+            if world_size > 1:
+                dist.broadcast(stop_flag, src=0)
+                if stop_flag.item() == 1:
+                    break
+                
+            epoch += 1
 
-    if rank == 0:
-        path=f"{config['result_path']}/final_result_{config.get('trial_number', -1)}.json"
-        with open(path, "w") as f:
-            json.dump({
-                "final_test_f1": float(final_test_f1),
-                "best_f1": float(best_f1),
-                "best_epoch": int(best_epoch),
-            }, f)
+        if rank == 0:
+            path=f"{config['result_path']}/final_result_{config.get('trial_number', -1)}.json"
+            with open(path, "w") as f:
+                json.dump({
+                    "final_test_f1": float(final_test_f1),
+                    "best_f1": float(best_f1),
+                    "best_epoch": int(best_epoch),
+                }, f)
 
-        mlflow.log_metric("final_test_f1", final_test_f1)
-        mlflow.log_metric("best_test_f1", best_f1)
-        mlflow.log_metric("best_epoch", best_epoch)
-        mlflow.end_run()
+            mlflow.log_metric("final_test_f1", final_test_f1)
+            mlflow.log_metric("best_test_f1", best_f1)
+            mlflow.log_metric("best_epoch", best_epoch)
+            mlflow.end_run()
 
-    dist.destroy_process_group()
+        dist.destroy_process_group()
 
-    print(f"Best test F1 score: {best_f1:.4f} at epoch {best_epoch}")
+        print(f"Best test F1 score: {best_f1:.4f} at epoch {best_epoch}")
+    except Exception as e:
+        print(f"[Rank {rank}] Exception: {e}", flush=True)
+        raise
+    finally:
+        # --- cleanup (always runs unless segfault) ---
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
+        # free memory (important for HPO loops)
+        torch.cuda.empty_cache()
+
+        print(f"[Rank {rank}] Cleaned up.", flush=True)
     
 def train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device):
     model.train()

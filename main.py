@@ -134,17 +134,33 @@ def objective(trial):
 
     config["trial_number"] = trial.number
     config["mlflow_run_name"] = f"trial_{trial.number}"
+    
+    try:
+        run_trial(config)
+    except Exception as e:
+        print(f"Trial {trial.number} failed: {e}")
+    finally:
+        torch.cuda.empty_cache()
 
-    run_trial(config)
+    final_path=f"results/{config.get('project_name', 'default')}/trial_{trial.number}/final_result_{trial.number}.json"
 
-    with open(f"{config['result_path']}/final_result_{config.get('trial_number', -1)}.json", "r") as f:
-        result = json.load(f)
+    if os.path.exists(final_path):
+        with open(final_path, "r") as f:
+            result = json.load(f)
 
-    trial.set_user_attr("best_epoch", result["best_epoch"])
-    trial.set_user_attr("best_f1", result["best_f1"])
-    trial.set_user_attr("final_test_f1", result["final_test_f1"])
+        trial.set_user_attr("best_epoch", result["best_epoch"])
+        trial.set_user_attr("best_f1", result["best_f1"])
+        trial.set_user_attr("final_test_f1", result["final_test_f1"])
 
-    return result["final_test_f1"]
+        return result["final_test_f1"]
+    else:
+        print(f"Final result file not found for trial {trial.number}, setting default values")
+        trial.set_user_attr("best_epoch", -1)
+        trial.set_user_attr("best_f1", float("-inf"))
+        trial.set_user_attr("final_test_f1", float("-inf"))
+        return float("-inf")
+
+    
 
 def run_hpo(n_trials=20):
     study = optuna.create_study(direction="maximize", study_name="gnn_te_classification")

@@ -285,6 +285,7 @@ class SAGEConv_Kmer_Classifier(Module):
         self.use_dnabert_proj = use_dnabert_proj
         self.num_total_features = len(dataset.feature_names)
         self.num_dna_features = len(dataset.dnabert_features)
+        self.num_other_features = self.num_total_features - self.num_dna_features
 
         if self.use_dnabert_proj:
             self.dna_proj = Sequential(
