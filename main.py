@@ -82,8 +82,8 @@ def run_trial(config=None):
             test_dataset, test_G=create_dataset(new_config)
         else:
             print("Found processed dataset, loading...")
-            test_dataset=torch.load(f"data/processed/{processed_file}", weights_only=False)
-            test_G=pickle.load(open(f"data/processed/graph_{config['species']}{config['k_mers']}{config['fam_type']}.pickle", 'rb'))
+            test_dataset=torch.load(f"data/processed/{test_processed_file}", weights_only=False)
+            test_G=pickle.load(open(f"data/processed/graph_{test_processed_file.replace('.pt', '.pickle')}", 'rb'))
 
         dataset.train_mask = torch.ones(dataset.num_nodes, dtype=torch.bool)
         dataset.test_mask = torch.zeros(dataset.num_nodes, dtype=torch.bool)

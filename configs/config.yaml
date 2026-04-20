@@ -22,21 +22,21 @@ focal_loss_alpha: 0.24994183621879268
 focal_loss_gamma: 2.6757684201996357
 use_focal_loss: true
 
-gpu_ids: [0,1,3]  #list of gpu ids to use, "all" to use all available gpus
+gpu_ids: [0,3]  #list of gpu ids to use, "all" to use all available gpus
 
 checkpoint_dir: "./checkpoints"
-project_name: "mus-features-subsets"
+project_name: "mus-partitions"
 
 species: "mouse"  # mouse/dog/dro
 k_mers: 3         # 0/3/4/5 
 fam_type: "Novo"  # "Novo"/""
-features_subset: "all" #none/original/structural/alg/k_mer_counts/dnabert/all
-partition: "random" #random/families/two_graphs
+features_subset: "all" #none/original/structural/alg/k_mer_counts/dnabert/all_less_alg/all_less_struct/all_less_original/all
+partition: "two_graphs" #random/families/two_graphs
 test_species: "dog"
 test_k_mers: 3
 test_fam_type: "Novo"
 
 recreate_dataset: False
-use_hpo: True
-experiment_mode: "features_subsets" # "basic"/"features_subsets"
+use_hpo: False
+experiment_mode: "basic" # "basic"/"features_subsets"
 n_trials: 50
