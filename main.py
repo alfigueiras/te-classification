@@ -48,6 +48,12 @@ def run_trial(config=None):
         selected_features=dataset.base_features+dataset.struct_features+dataset.alg_features+dataset.dnabert_features
     elif config["features_subset"]=="k_mer_counts":
         selected_features=dataset.base_features+dataset.struct_features+dataset.alg_features+dataset.kmer_features
+    elif config["features_subset"]=="all_less_alg":
+        selected_features=dataset.base_features+dataset.struct_features+dataset.dnabert_features+dataset.kmer_features
+    elif config["features_subset"]=="all_less_struct":
+        selected_features=dataset.base_features+dataset.alg_features+dataset.dnabert_features+dataset.kmer_features
+    elif config["features_subset"]=="all_less_original":
+        selected_features=dataset.struct_features+dataset.alg_features+dataset.dnabert_features+dataset.kmer_features
 
     if config["features_subset"]!="all":
         indices = [dataset.feature_names.index(f) for f in selected_features]

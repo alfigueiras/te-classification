@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 import numpy as np
 
-def create_digraph_new(nodes_path="", edges_path="", add_in_superbubble_atr=False, add_in_local_cluster_atr=False, zero_column=True, kmers=0, disable_tqdm=False, k_core_val=3):
+def create_digraph_new(nodes_path="", edges_path="", add_in_superbubble_atr=False, add_in_local_cluster_atr=False, zero_column=True, kmers=0, disable_tqdm=False, k_core_val=3, undirected=True):
     """
     Creates a directed graph using the nodes and edges in the respective paths, using the mouse dataset.
     """
@@ -87,7 +87,6 @@ def create_digraph_new(nodes_path="", edges_path="", add_in_superbubble_atr=Fals
         nx.set_node_attributes(G, is_superbubble_boundary_attr, name="is_superbubble_boundary")
 
     if add_in_local_cluster_atr:
-        
         undirected_G=nx.Graph()
         undirected_G.add_nodes_from(G.nodes(data=True))
         undirected_G.add_edges_from(G.edges())
@@ -114,6 +113,12 @@ def create_digraph_new(nodes_path="", edges_path="", add_in_superbubble_atr=Fals
             in_local_cluster_atr[node]=1
 
         nx.set_node_attributes(undirected_G, in_local_cluster_atr, name="in_local_cluster")
+    elif undirected:
+        undirected_G=nx.Graph()
+        undirected_G.add_nodes_from(G.nodes(data=True))
+        undirected_G.add_edges_from(G.edges())
+    else:
+        return G
 
     return undirected_G
 
@@ -214,6 +219,18 @@ def find_bubble_chains(bubbles):
                     
     return bubble_chains
 
+def bubblechain_duplicates_remove(chains):
+    unique_chains=[]
+    for chain in chains:
+        found=False
+        for new_chain in unique_chains:
+            if chain[0][0]==new_chain[-1][1] and chain[-1][1]==new_chain[0][0]:
+                found=True
+                break
+        if not found: 
+            unique_chains.append(chain)
+    return unique_chains
+
 def superbubble_duplicates_remove(bubbles):
     """
     Given a list of superbubbles, removes duplicates (pairs of bubbles where the sink and source are switched, seen).
@@ -262,7 +279,7 @@ def draw_bubble(bubble, graph: nx.DiGraph, get_all_parents=False, get_extremity_
 
     plt.figure(figsize=(8, 6))
     nx.draw(subgraph, with_labels=True, node_color=node_colors, edge_color='gray', node_size=node_size, font_size=font_size)
-    plt.title("Bubble Visualization")
+    #plt.title("Bubble Visualization")
     plt.show()
 
 def draw_bubble_chain(bubble_chain, graph: nx.DiGraph, get_extremity_neighbors, node_size=500, font_size=10):
