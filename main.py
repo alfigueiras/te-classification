@@ -55,10 +55,12 @@ def run_trial(config=None):
     elif config["features_subset"]=="all_less_original":
         selected_features=dataset.struct_features+dataset.alg_features+dataset.dnabert_features+dataset.kmer_features
 
-    if config["features_subset"]!="all":
+    if config["features_subset"]!="all" and config["features_subset"]!="none":
         indices = [dataset.feature_names.index(f) for f in selected_features]
         dataset.x = dataset.x[:, indices]   
         dataset.feature_names = selected_features
+    elif config["features_subset"]=="none":
+        dataset.feature_names = ["constant_feature"]
 
     if config["partition"]=="families":
         mask=dataset_split_by_components(G, dataset, config)
@@ -124,19 +126,22 @@ def objective(trial):
     config = deepcopy(base_config)
 
     # sample hyperparameters
-    config["learning_rate"] = trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True)
-    config["hidden_dim"] = trial.suggest_categorical("hidden_dim", [512, 768, 1024])
-    config["embedding_dim"] = trial.suggest_categorical("embedding_dim", [512, 768, 1024])
-    config["dropout_p"] = trial.suggest_float("dropout_p", 0.1, 0.5)
-    config["edge_dropout_p"] = trial.suggest_float("edge_dropout_p", 0.2, 0.5)
-    config["num_layers"] = trial.suggest_int("num_layers", 2, 5)
+    if config["experiment_mode"]=="basic":
+        config["learning_rate"] = trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True)
+        config["hidden_dim"] = trial.suggest_categorical("hidden_dim", [512, 768, 1024])
+        config["embedding_dim"] = trial.suggest_categorical("embedding_dim", [512, 768, 1024])
+        config["dropout_p"] = trial.suggest_float("dropout_p", 0.1, 0.5)
+        config["edge_dropout_p"] = trial.suggest_float("edge_dropout_p", 0.2, 0.5)
+        config["num_layers"] = trial.suggest_int("num_layers", 2, 5)
 
-    if config["model"] in ["GAT", "GATv2"]:
-        config["heads"] = trial.suggest_categorical("heads", [1, 2, 4])
+        if config["model"] in ["GAT", "GATv2"]:
+            config["heads"] = trial.suggest_categorical("heads", [1, 2, 4])
 
-    if config["use_focal_loss"]:
-        config["focal_loss_alpha"] = trial.suggest_float("focal_loss_alpha", 0.1, 0.9)
-        config["focal_loss_gamma"] = trial.suggest_float("focal_loss_gamma", 1.0, 5.0)
+        if config["use_focal_loss"]:
+            config["focal_loss_alpha"] = trial.suggest_float("focal_loss_alpha", 0.1, 0.9)
+            config["focal_loss_gamma"] = trial.suggest_float("focal_loss_gamma", 1.0, 5.0)
+    elif config["experiment_mode"]=="features_subsets":
+        config["features_subset"] = trial.suggest_categorical("features_subset", ["none", "original", "structural", "alg", "dnabert", "k_mer_counts", "all_less_alg", "all_less_struct", "all_less_original"])
 
     config["trial_number"] = trial.number
     config["mlflow_run_name"] = f"trial_{trial.number}"
@@ -168,9 +173,17 @@ def objective(trial):
 
     
 
-def run_hpo(n_trials=20):
-    study = optuna.create_study(direction="maximize", study_name="gnn_te_classification")
-    study.optimize(objective, n_trials=n_trials)
+def run_hpo(n_trials=20, experiment_mode="basic"):
+    if experiment_mode=="basic":
+        study = optuna.create_study(direction="maximize", study_name="gnn_te_classification")
+        study.optimize(objective, n_trials=n_trials)
+    elif experiment_mode=="features_subsets":
+        search_space = {
+            "features_subset": ["none", "original", "structural", "alg", "dnabert", "k_mer_counts", "all_less_alg", "all_less_struct", "all_less_original"]
+        }
+        sampler = optuna.samplers.GridSampler(search_space)
+        study = optuna.create_study(sampler=sampler, direction="maximize", study_name="gnn_te_classification_features_subsets")
+        study.optimize(objective)
 
     print("Best trial:")
     print(f"  Value: {study.best_trial.value}")
@@ -181,6 +194,6 @@ def run_hpo(n_trials=20):
 if __name__ == "__main__":
     config=get_config()
     if config["use_hpo"]:
-        run_hpo(n_trials=config["n_trials"])
+        run_hpo(n_trials=config["n_trials"], experiment_mode=config["experiment_mode"])
     else:
         run_trial(config)

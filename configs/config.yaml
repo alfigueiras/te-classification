@@ -1,4 +1,4 @@
-learning_rate: 0.009
+learning_rate: 0.0010216943108365736
 epochs: 75
 batch_size: 32768
 train_split: 0.8
@@ -9,25 +9,25 @@ save_interval: 25
 early_stop_patience: 10
 early_stop_min_delta: 0
 
-model: "SAGE" # GAT/GATv2/GraphTransformer/SAGE/GIN
+model: "GIN" # GAT/GATv2/GraphTransformer/SAGE/GIN
 embedding_dim: 1024
-hidden_dim: 1024
+hidden_dim: 512
 dnabert_proj_dim: 128
 heads: 2
-dropout_p: 0.4
-edge_dropout_p: 0.2
-num_layers: 5
+dropout_p: 0.19911532553817834
+edge_dropout_p: 0.2550676115328456
+num_layers: 4
 
-focal_loss_alpha: 1.0
-focal_loss_gamma: 3.0
+focal_loss_alpha: 0.24994183621879268
+focal_loss_gamma: 2.6757684201996357
 use_focal_loss: true
 
-gpu_ids: "all"  #list of gpu ids to use, "all" to use all available gpus
+gpu_ids: [0,1,3]  #list of gpu ids to use, "all" to use all available gpus
 
 checkpoint_dir: "./checkpoints"
-project_name: "dro-sage-all"
+project_name: "mus-features-subsets"
 
-species: "dro"  # mouse/dog/dro
+species: "mouse"  # mouse/dog/dro
 k_mers: 3         # 0/3/4/5 
 fam_type: "Novo"  # "Novo"/""
 features_subset: "all" #none/original/structural/alg/k_mer_counts/dnabert/all
@@ -38,4 +38,5 @@ test_fam_type: "Novo"
 
 recreate_dataset: False
 use_hpo: True
+experiment_mode: "features_subsets" # "basic"/"features_subsets"
 n_trials: 50
