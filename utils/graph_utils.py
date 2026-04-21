@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 import numpy as np
 
-def create_digraph_new(nodes_path="", edges_path="", add_in_superbubble_atr=False, add_in_local_cluster_atr=False, zero_column=True, kmers=0, disable_tqdm=False, k_core_val=3, undirected=True):
+def create_digraph_new(nodes_path="", edges_path="", add_in_superbubble_atr=False, add_in_local_cluster_atr=False, add_unitig_entropy_atr=False, zero_column=True, kmers=0, disable_tqdm=False, k_core_val=3, undirected=True):
     """
     Creates a directed graph using the nodes and edges in the respective paths, using the mouse dataset.
     """
@@ -61,6 +61,22 @@ def create_digraph_new(nodes_path="", edges_path="", add_in_superbubble_atr=Fals
                 G.add_edge(int(edge[0]), int(edge[1]), orientation=edge[2])
 
     G.remove_nodes_from(list(nx.isolates(G)))
+
+    if add_unitig_entropy_atr:
+        unitig_entropy_attr = {node: 0 for node in G.nodes}
+
+        for node, data in G.nodes(data=True):
+            unitig = data.get("unitig", "")
+            if not unitig:
+                unitig_entropy_attr[node] = 0.0
+                continue
+
+            _, counts = np.unique(list(unitig), return_counts=True)
+            probs = counts / counts.sum()
+            entropy = float(-np.sum(probs * np.log2(probs)))
+            unitig_entropy_attr[node] = entropy
+
+        nx.set_node_attributes(G, unitig_entropy_attr, name="unitig_entropy")
 
     if add_in_superbubble_atr:
         in_superbubble_attr={node: 0 for node in G.nodes}

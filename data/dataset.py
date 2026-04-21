@@ -61,7 +61,7 @@ def create_dataset(config):
         sequences.append(data["unitig"])
         node_ids.append(node)
     
-    embeddings, saved=compute_or_load_dnabert_embeddings(sequences=sequences, save_path=f"data/processed/{config['species']}_dnabert.pt", node_ids=node_ids, force_recompute=config["recreate_dataset"])
+    embeddings, saved=compute_or_load_dnabert_embeddings(sequences=sequences, save_path=f"data/processed/{config['species']}_dnabert.pt", node_ids=node_ids, force_recompute=config["dnabert_recompute"])
 
     # just in case the order changed for some reason
     node_ids=saved["node_ids"]
@@ -91,13 +91,16 @@ def data_to_torch(undirected_G, k_mers, embeddings, node_ids):
         'in_local_cluster'
     ]
 
+    entropy_features=['unitig_entropy']
+
     g_node_attrs=base_features.copy()
 
     g_node_attrs+=alg_features
 
+    g_node_attrs+=entropy_features
+
     undirected_G, struct_features_names = structural_features(undirected_G)
     g_node_attrs+=struct_features_names
-    
     k_mer_features=[]
     if k_mers > 0:
         for p in itertools.product(['A','C','G','T'], repeat=k_mers):
@@ -133,6 +136,7 @@ def data_to_torch(undirected_G, k_mers, embeddings, node_ids):
     dataset.feature_names = g_node_attrs[:-1] + dnabert_feature_names
     dataset.base_features = base_features
     dataset.alg_features = alg_features
+    dataset.entropy_features = entropy_features
     dataset.struct_features = struct_features_names
     dataset.kmer_features = k_mer_features
     dataset.dnabert_features = dnabert_feature_names

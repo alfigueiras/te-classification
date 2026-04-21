@@ -54,8 +54,12 @@ def run_trial(config=None):
         selected_features=dataset.base_features+dataset.alg_features+dataset.dnabert_features+dataset.kmer_features
     elif config["features_subset"]=="all_less_original":
         selected_features=dataset.struct_features+dataset.alg_features+dataset.dnabert_features+dataset.kmer_features
+    elif config["features_subset"]=="entropy":
+        selected_features=dataset.base_features+dataset.struct_features+dataset.alg_features+dataset.entropy_features
+    elif config["features_subset"]=="all":
+        selected_features=dataset.base_features+dataset.struct_features+dataset.alg_features+dataset.dnabert_features+dataset.kmer_features
 
-    if config["features_subset"]!="all" and config["features_subset"]!="none":
+    if config["features_subset"]!="none":
         indices = [dataset.feature_names.index(f) for f in selected_features]
         dataset.x = dataset.x[:, indices]   
         dataset.feature_names = selected_features
