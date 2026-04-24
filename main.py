@@ -62,10 +62,10 @@ def run_trial(config=None):
                 dro_mask, dro_fam_counts=dataset_split_by_components(G_dro, dro_dataset, config)
                 dro_dataset.train_mask = dro_mask[0]
                 dro_dataset.test_mask = dro_mask[1]
+                fam_counts={"mouse": mus_fam_counts, "dog": dog_fam_counts, "dro": dro_fam_counts}
 
             datasets=[mus_dataset, dog_dataset, dro_dataset]
             Gs=[G_mus, G_dog, G_dro]
-            fam_counts={"mouse": mus_fam_counts, "dog": dog_fam_counts, "dro": dro_fam_counts}
 
             dataset=merge_pyg_datasets(datasets)
         else:
@@ -161,7 +161,7 @@ def run_trial(config=None):
         print("CUDA not available, using CPU for training")
 
     print("Starting training...")
-    mp.spawn(train, args=(world_size, dataset, config, test_dataset, fam_counts), nprocs=world_size, join=True)
+    mp.spawn(train, args=(world_size, dataset, config, fam_counts, test_dataset), nprocs=world_size, join=True)
 
 def objective(trial):
     base_config = get_config()
