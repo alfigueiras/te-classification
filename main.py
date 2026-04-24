@@ -230,6 +230,13 @@ def run_hpo(n_trials=20, experiment_mode="basic"):
         sampler = optuna.samplers.GridSampler(search_space)
         study = optuna.create_study(sampler=sampler, direction="maximize", study_name="gnn_te_classification_features_subsets")
         study.optimize(objective)
+    elif experiment_mode=="sequence_experiment":
+        search_space = {
+            "features_subset": ["all", "alg", "entropy"]
+        }
+        sampler = optuna.samplers.GridSampler(search_space)
+        study = optuna.create_study(sampler=sampler, direction="maximize", study_name="gnn_te_classification_sequence_experiment")
+        study.optimize(objective)
 
     print("Best trial:")
     print(f"  Value: {study.best_trial.value}")
