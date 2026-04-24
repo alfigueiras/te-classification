@@ -1,7 +1,7 @@
 from copy import deepcopy
 
 from configs.default import get_config
-from data.dataset import create_dataset, dataset_split_by_components, standardize_selected_columns, random_dataset_split, test_standardize
+from data.dataset import create_dataset, dataset_choose_single_family, dataset_split_by_components, merge_pyg_datasets, standardize_selected_columns, random_dataset_split, test_standardize
 from models.train import train
 
 import os
@@ -28,13 +28,49 @@ def run_trial(config=None):
 
     os.makedirs("data/processed", exist_ok=True)
 
-    if processed_file not in os.listdir("data/processed") or config["recreate_dataset"]:
-        print(f"Creating dataset...")
-        dataset, G=create_dataset(config)
-    else:
-        print("Found processed dataset, loading...")
-        dataset=torch.load(f"data/processed/{processed_file}", weights_only=False)
-        G=pickle.load(open(f"data/processed/graph_{config['species']}{config['k_mers']}{config['fam_type']}.pickle", 'rb'))
+    fam_counts=None
+
+    if config["species"]!="all":
+        if processed_file not in os.listdir("data/processed") or config["recreate_dataset"]:
+            print(f"Creating dataset...")
+            dataset, G=create_dataset(config)
+        else:
+            print("Found processed dataset, loading...")
+            dataset=torch.load(f"data/processed/{processed_file}", weights_only=False)
+            G=pickle.load(open(f"data/processed/graph_{config['species']}{config['k_mers']}{config['fam_type']}.pickle", 'rb'))
+    elif config["species"]=="all":
+        if f"data/processed/all_species.pt" not in os.listdir("data/processed") or config["recreate_dataset"]:
+            mus_dataset=torch.load(f"data/processed/mouse3Novo.pt", weights_only=False)
+            dog_dataset=torch.load(f"data/processed/dog3Novo.pt", weights_only=False)
+            dro_dataset=torch.load(f"data/processed/dro3Novo.pt", weights_only=False)
+
+            G_mus=pickle.load(open(f"data/processed/graph_mouse3Novo.pickle", 'rb'))
+            G_dog=pickle.load(open(f"data/processed/graph_dog3Novo.pickle", 'rb'))
+            G_dro=pickle.load(open(f"data/processed/graph_dro3Novo.pickle", 'rb'))
+
+            if config["partition"]=="single_family":
+                mus_dataset=dataset_choose_single_family(G_mus, mus_dataset, config["single_family_fam"])
+                dog_dataset=dataset_choose_single_family(G_dog, dog_dataset, config["single_family_fam"])
+                dro_dataset=dataset_choose_single_family(G_dro, dro_dataset, config["single_family_fam"])
+            elif config["partition"]=="families":
+                mus_mask, mus_fam_counts=dataset_split_by_components(G_mus, mus_dataset, config)
+                mus_dataset.train_mask = mus_mask[0]
+                mus_dataset.test_mask = mus_mask[1]
+                dog_mask, dog_fam_counts=dataset_split_by_components(G_dog, dog_dataset, config)
+                dog_dataset.train_mask = dog_mask[0]
+                dog_dataset.test_mask = dog_mask[1]
+                dro_mask, dro_fam_counts=dataset_split_by_components(G_dro, dro_dataset, config)
+                dro_dataset.train_mask = dro_mask[0]
+                dro_dataset.test_mask = dro_mask[1]
+
+            datasets=[mus_dataset, dog_dataset, dro_dataset]
+            Gs=[G_mus, G_dog, G_dro]
+            fam_counts={"mouse": mus_fam_counts, "dog": dog_fam_counts, "dro": dro_fam_counts}
+
+            dataset=merge_pyg_datasets(datasets)
+        else:
+            print("Found processed dataset, loading...")
+            dataset=torch.load(f"data/processed/all_species.pt", weights_only=False)
 
     if config["features_subset"]=="none":
         dataset.x=torch.ones((dataset.num_nodes, 1), dtype=torch.float32)
@@ -66,10 +102,12 @@ def run_trial(config=None):
     elif config["features_subset"]=="none":
         dataset.feature_names = ["constant_feature"]
 
-    if config["partition"]=="families":
-        mask=dataset_split_by_components(G, dataset, config)
+    if config["partition"]=="families" and config["species"]!="all":
+        mask, fam_counts=dataset_split_by_components(G, dataset, config)
         dataset.train_mask = mask[0]
         dataset.test_mask = mask[1]
+    elif config["partition"]=="single_family" and config["species"]!="all":
+        dataset=dataset_choose_single_family(G, dataset, config["single_family_fam"])
     elif config["partition"]=="random":
         train_mask, test_mask = random_dataset_split(dataset, config)
         dataset.train_mask = train_mask
@@ -123,11 +161,14 @@ def run_trial(config=None):
         print("CUDA not available, using CPU for training")
 
     print("Starting training...")
-    mp.spawn(train, args=(world_size, dataset, config, test_dataset), nprocs=world_size, join=True)
+    mp.spawn(train, args=(world_size, dataset, config, test_dataset, fam_counts), nprocs=world_size, join=True)
 
 def objective(trial):
     base_config = get_config()
     config = deepcopy(base_config)
+
+    config["trial_number"] = trial.number
+    config["mlflow_run_name"] = f"trial_{trial.number}"
 
     # sample hyperparameters
     if config["experiment_mode"]=="basic":
@@ -146,9 +187,10 @@ def objective(trial):
             config["focal_loss_gamma"] = trial.suggest_float("focal_loss_gamma", 1.0, 5.0)
     elif config["experiment_mode"]=="features_subsets":
         config["features_subset"] = trial.suggest_categorical("features_subset", ["none", "original", "structural", "alg", "dnabert", "k_mer_counts", "all_less_alg", "all_less_struct", "all_less_original"])
-
-    config["trial_number"] = trial.number
-    config["mlflow_run_name"] = f"trial_{trial.number}"
+        config["mlflow_run_name"] = f"trial_{config['features_subset']}"
+    elif config["experiment_mode"]=="sequence_experiment":
+        config["features_subset"] = trial.suggest_categorical("features_subset", ["all", "alg", "entropy"])
+        config["mlflow_run_name"] = f"trial_{config['features_subset']}"
     
     try:
         run_trial(config)

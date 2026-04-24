@@ -37,3 +37,5 @@ def filter_counter_by_keys(te_counts, mask):
     file_name = f"family_counter.json"
     with open(file_name, "w") as f:
         json.dump(combined, f, indent=2)
+
+    return combined

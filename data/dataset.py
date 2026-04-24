@@ -49,7 +49,7 @@ def create_dataset(config):
     else:
         k_core_val=3
 
-    undirected_G=create_digraph_new(node_path, edge_path, add_in_superbubble_atr=True, add_in_local_cluster_atr=True, zero_column=zero_column, kmers=config['k_mers'], disable_tqdm=True, k_core_val=k_core_val)
+    undirected_G=create_digraph_new(node_path, edge_path, add_in_superbubble_atr=True, add_in_local_cluster_atr=True, add_unitig_entropy_atr=True, zero_column=zero_column, kmers=config['k_mers'], disable_tqdm=True, k_core_val=k_core_val)
 
     pickle.dump(undirected_G, open(f"data/processed/graph_{config['species']}{str(config['k_mers'])}{config['fam_type']}.pickle", 'wb'))
     # get dnabert embeddings
@@ -240,6 +240,70 @@ def test_standardize(dataset, mean, std, exclude_feature_names):
     ) / std
     return dataset
 
+def merge_pyg_datasets(datasets):
+    x_list = []
+    y_list = []
+    edge_index_list = []
+    train_mask_list = []
+    test_mask_list = []
+    graph_id_list = []
+
+    node_offset = 0
+
+    for graph_idx, data in enumerate(datasets):
+        num_nodes = data.num_nodes
+
+        x_list.append(data.x)
+        y_list.append(data.y)
+        edge_index_list.append(data.edge_index + node_offset)
+
+        train_mask_list.append(data.train_mask)
+        test_mask_list.append(data.test_mask)
+
+        graph_id_list.append(torch.full((num_nodes,), graph_idx, dtype=torch.long))
+        node_offset += num_nodes
+
+    merged = Data(
+        x=torch.cat(x_list, dim=0),
+        y=torch.cat(y_list, dim=0),
+        edge_index=torch.cat(edge_index_list, dim=1),
+    )
+
+    merged.train_mask = torch.cat(train_mask_list, dim=0)
+    merged.test_mask = torch.cat(test_mask_list, dim=0)
+    merged.graph_id = torch.cat(graph_id_list, dim=0)
+
+    if hasattr(datasets[0], "feature_names"):
+        merged.feature_names = datasets[0].feature_names
+    if hasattr(datasets[0], "dnabert_features"):
+        merged.dnabert_features = datasets[0].dnabert_features
+    if hasattr(datasets[0], "base_features"):
+        merged.base_features = datasets[0].base_features
+    if hasattr(datasets[0], "alg_features"):
+        merged.alg_features = datasets[0].alg_features
+    if hasattr(datasets[0], "struct_features"):
+        merged.struct_features = datasets[0].struct_features
+    if hasattr(datasets[0], "kmer_features"):
+        merged.kmer_features = datasets[0].kmer_features
+    if hasattr(datasets[0], "entropy_features"):
+        merged.entropy_features = datasets[0].entropy_features
+
+    torch.save(merged, f"data/processed/all_species.pt")
+
+    return merged
+
+def dataset_choose_single_family(G: nx.Graph, dataset, fam):
+    selected_nodes = [node for node, data in G.nodes(data=True) if 'lst_dfam_repeats' in data and fam in data['lst_dfam_repeats']]
+    train_mask = torch.ones(dataset.num_nodes, dtype=torch.bool)
+    test_mask = torch.zeros(dataset.num_nodes, dtype=torch.bool)
+    node_id_map = {node: i for i, node in enumerate(G.nodes())}
+    for node in selected_nodes:
+        train_mask[node_id_map[node]] = False
+        test_mask[node_id_map[node]] = True
+    dataset.train_mask = train_mask
+    dataset.test_mask = test_mask
+    return dataset 
+
 def dataset_split_by_components(G: nx.Graph, data_full, config):
     """
     Splits the graph into train and test datasets, separating families between them. All the nodes of a family are in the same dataset.
@@ -344,8 +408,8 @@ def dataset_split_by_components(G: nx.Graph, data_full, config):
 
     mask=(train_mask, test_mask, train_fams, test_fams)
 
-    filter_counter_by_keys(transposable_e, mask)
-    return mask
+    fam_counts=filter_counter_by_keys(transposable_e, mask)
+    return mask, fam_counts
 
 def count_nodes_with_families(G, nodes_subset):
     count = 0

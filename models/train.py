@@ -14,7 +14,7 @@ from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_sco
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch_geometric.loader import NeighborLoader
 
-def train(rank, world_size, dataset, config, test_dataset=None):
+def train(rank, world_size, dataset, config, fam_counts=None, test_dataset=None):
     try:
         os.environ['MASTER_ADDR'] = 'localhost'
         os.environ["MASTER_PORT"] = str(12355 + config.get('trial_number', 0))
@@ -91,6 +91,9 @@ def train(rank, world_size, dataset, config, test_dataset=None):
                 result_path = f"results/{config.get('project_name', 'default')}/{run.data.tags.get('mlflow.runName')}"
             else: 
                 result_path = f"results/{config.get('project_name', 'default')}/trial_{config.get('trial_number', -1)}"
+
+            if fam_counts is not None:
+                mlflow.log_dict(fam_counts, "family_partition_counts.json")
 
             config["result_path"] = result_path
 
