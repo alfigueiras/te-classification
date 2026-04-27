@@ -22,17 +22,18 @@ focal_loss_alpha: 0.24994183621879268
 focal_loss_gamma: 2.6757684201996357
 use_focal_loss: true
 
-gpu_ids: "all"  #list of gpu ids to use, "all" to use all available gpus
+gpu_ids: [0,1,2] #list of gpu ids to use, "all" to use all available gpus
 
 checkpoint_dir: "./checkpoints"
-project_name: "all-families"
+project_name: "all-random-sample"
 
 species: "all"  # mouse/dog/dro/all
 k_mers: 3         # 0/3/4/5 
 fam_type: "Novo"  # "Novo"/""
 features_subset: "all" #none/original/structural/alg/entropy/k_mer_counts/dnabert/all_less_alg/all_less_struct/all_less_original/all
-partition: "families" #random/families/two_graphs/single_family
-test_species: "mouse" # mouse/dog/dro
+partition: "random" #random/families/two_graphs/single_family
+families_test: "dog" #dog/mouse/dro/all
+test_species: "dog" # mouse/dog/dro
 test_k_mers: 3 # 0/3/4/5 
 test_fam_type: "Novo" # "Novo"/""
 
@@ -40,6 +41,6 @@ single_family_fam: "SINEC_Cf2;" #family to use in single family partition, e.g. 
 
 recreate_dataset: False
 dnabert_recompute: False
-use_hpo: False
-experiment_mode: "basic" # "basic"/"features_subsets"/"sequence_experiment"
+use_hpo: True
+experiment_mode: "sequence_experiment" # "basic"/"features_subsets"/"sequence_experiment"
 n_trials: 50

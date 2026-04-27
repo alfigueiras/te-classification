@@ -124,7 +124,7 @@ def train(rank, world_size, dataset, config, fam_counts=None, test_dataset=None)
             train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device)
             stop_flag = torch.tensor([0], device=device)
             if rank==0:
-                metrics = test_gnn_epoch(epoch, model.module, test_loader, criterion, device)
+                metrics = test_gnn_epoch(epoch, model.module, test_loader, test_dataset, criterion, device)
                 
                 final_test_f1 = metrics["test/f1"]   # overwrite every epoch, so last one remains
                 stop = early_stopper.step(metrics['test/loss'])
@@ -214,12 +214,13 @@ def train_gnn_epoch(epoch, model, train_loader, optimizer, criterion, device):
         log_metrics(metrics, step=epoch)
         log_confusion_matrix(all_targets, all_preds, split="train", step=epoch)
 
-def test_gnn_epoch(epoch, model, test_loader, criterion, device):
+def test_gnn_epoch(epoch, model, test_loader, dataset, criterion, device):
     model.eval()
     total_loss = 0
     all_probs = torch.empty(0)
     all_preds = torch.empty(0)
     all_targets = torch.empty(0)
+    all_node_ids = torch.empty(0, dtype=torch.long)
 
     with torch.no_grad():
         for batch in test_loader:
@@ -233,22 +234,66 @@ def test_gnn_epoch(epoch, model, test_loader, criterion, device):
             probs = torch.sigmoid(logits[:batch.batch_size])
             predictions = (probs>=0.5).long()
             targets = batch.y[:batch.batch_size]
+            node_ids = batch.n_id[:batch.batch_size].detach().cpu()
 
             all_probs = torch.cat([all_probs, probs.detach().cpu()])
             all_preds = torch.cat([all_preds, predictions.detach().cpu()])
             all_targets = torch.cat([all_targets, targets.detach().cpu()])
+            all_node_ids = torch.cat([all_node_ids, node_ids])
 
             total_loss += loss.item()
 
     avg_loss = total_loss / len(test_loader)
 
     metrics={}
-    
+    family_stats = {}
     if dist.get_rank() == 0:
         metrics=compute_metrics(epoch, all_probs, all_preds, all_targets, avg_loss, split="test")
+        if dataset._node_families is not None:
+            family_stats = compute_family_stats(all_preds, all_targets, all_node_ids, dataset)
+            mlflow.log_dict(
+            family_stats,
+            f"family_preds/test/fam_acc_epoch_{epoch:03d}.json"
+        )
         log_metrics(metrics, step=epoch)
         log_confusion_matrix(all_targets, all_preds, split="test", step=epoch)
+        
     return metrics
+
+def compute_family_stats(all_preds, all_targets, all_node_ids, dataset):
+    family_correct = {}
+    family_total = {}
+
+    for pred, target, node_id in zip(all_preds, all_targets, all_node_ids):
+        node_id = int(node_id)
+        pred = int(pred)
+        target = int(target)
+
+        families = dataset._node_families[node_id]
+
+        if not families:
+            continue
+
+        correct = int(pred == target)
+
+        for fam in set(f.strip() for f in families):
+            family_correct[fam] = family_correct.get(fam, 0) + correct
+            family_total[fam] = family_total.get(fam, 0) + 1
+
+    family_stats = {}
+
+    for fam in family_total:
+        total = family_total[fam]
+        correct = family_correct[fam]
+        acc = correct / total if total > 0 else 0.0
+
+        family_stats[fam] = {
+            "accuracy": acc,
+            "correct": correct,
+            "total": total
+        }
+
+    return family_stats
 
 def gather_all_predictions(local_probs, local_preds, local_targets, local_avg_loss):
     if not dist.is_initialized():

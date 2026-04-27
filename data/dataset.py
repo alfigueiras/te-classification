@@ -308,6 +308,7 @@ def dataset_split_by_components(G: nx.Graph, data_full, config):
     """
     Splits the graph into train and test datasets, separating families between them. All the nodes of a family are in the same dataset.
     """
+    
     lst_dfam_repeats_values = [data['lst_dfam_repeats'] for node, data in G.nodes(data=True) if 'lst_dfam_repeats' in data]
     transposable_e=Counter(list(itertools.chain.from_iterable(lst_dfam_repeats_values)))
 
