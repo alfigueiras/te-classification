@@ -249,7 +249,7 @@ def test_gnn_epoch(epoch, model, test_loader, dataset, criterion, device):
     family_stats = {}
     if dist.get_rank() == 0:
         metrics=compute_metrics(epoch, all_probs, all_preds, all_targets, avg_loss, split="test")
-        if dataset._node_families is not None:
+        if hasattr(dataset, "_node_families") and dataset._node_families is not None:
             family_stats = compute_family_stats(all_preds, all_targets, all_node_ids, dataset)
             mlflow.log_dict(
             family_stats,

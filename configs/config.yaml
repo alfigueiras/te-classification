@@ -25,14 +25,14 @@ use_focal_loss: true
 gpu_ids: [0,1,2] #list of gpu ids to use, "all" to use all available gpus
 
 checkpoint_dir: "./checkpoints"
-project_name: "all-random-sample"
+project_name: "mus_dog-all-families-c"
 
-species: "all"  # mouse/dog/dro/all
+species: "mus_dog"  # mouse/dog/dro/all/mus_dog
 k_mers: 3         # 0/3/4/5 
 fam_type: "Novo"  # "Novo"/""
 features_subset: "all" #none/original/structural/alg/entropy/k_mer_counts/dnabert/all_less_alg/all_less_struct/all_less_original/all
-partition: "random" #random/families/two_graphs/single_family
-families_test: "dog" #dog/mouse/dro/all
+partition: "families" #random/families/two_graphs/single_family
+families_test: "mouse_dog" #dog/mouse/dro/all
 test_species: "dog" # mouse/dog/dro
 test_k_mers: 3 # 0/3/4/5 
 test_fam_type: "Novo" # "Novo"/""

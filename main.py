@@ -32,7 +32,7 @@ def run_trial(config=None):
 
     fam_counts=None
 
-    if config["species"]!="all":
+    if config["species"] not in ["all","mus_dog"]:
         if processed_file not in os.listdir("data/processed") or config["recreate_dataset"]:
             print(f"Creating dataset...")
             dataset, G=create_dataset(config)
@@ -40,20 +40,24 @@ def run_trial(config=None):
             print("Found processed dataset, loading...")
             dataset=torch.load(f"data/processed/{processed_file}", weights_only=False)
             G=pickle.load(open(f"data/processed/graph_{config['species']}{config['k_mers']}{config['fam_type']}.pickle", 'rb'))
-    elif config["species"]=="all":
-
+    elif config["species"]=="all" or config["species"]=="mus_dog":
         mus_dataset=torch.load(f"data/processed/mouse3Novo.pt", weights_only=False)
         dog_dataset=torch.load(f"data/processed/dog3Novo.pt", weights_only=False)
-        dro_dataset=torch.load(f"data/processed/dro3Novo.pt", weights_only=False)
+        
+        if config["species"]!="mus_dog":
+            dro_dataset=torch.load(f"data/processed/dro3Novo.pt", weights_only=False)
 
         G_mus=pickle.load(open(f"data/processed/graph_mouse3Novo.pickle", 'rb'))
         G_dog=pickle.load(open(f"data/processed/graph_dog3Novo.pickle", 'rb'))
-        G_dro=pickle.load(open(f"data/processed/graph_dro3Novo.pickle", 'rb'))
+
+        if config["species"]!="mus_dog":
+            G_dro=pickle.load(open(f"data/processed/graph_dro3Novo.pickle", 'rb'))
 
         if config["partition"]=="single_family":
             mus_dataset=dataset_choose_single_family(G_mus, mus_dataset, config["single_family_fam"])
             dog_dataset=dataset_choose_single_family(G_dog, dog_dataset, config["single_family_fam"])
-            dro_dataset=dataset_choose_single_family(G_dro, dro_dataset, config["single_family_fam"])
+            if config["species"]!="mus_dog":
+                dro_dataset=dataset_choose_single_family(G_dro, dro_dataset, config["single_family_fam"])
         elif config["partition"]=="random":
             mus_train_mask, mus_test_mask = random_dataset_split(mus_dataset, config)
             mus_dataset.train_mask = mus_train_mask
@@ -63,12 +67,13 @@ def run_trial(config=None):
             dog_dataset.train_mask = dog_train_mask
             dog_dataset.test_mask = dog_test_mask
 
-            dro_train_mask, dro_test_mask = random_dataset_split(dro_dataset, config)
-            dro_dataset.train_mask = dro_train_mask
-            dro_dataset.test_mask = dro_test_mask
+            if config["species"]!="mus_dog":
+                dro_train_mask, dro_test_mask = random_dataset_split(dro_dataset, config)
+                dro_dataset.train_mask = dro_train_mask
+                dro_dataset.test_mask = dro_test_mask
         elif config["partition"]=="families":
             mus_mask, mus_fam_counts=dataset_split_by_components(G_mus, mus_dataset, config)
-            if config["families_test"]=="mouse" or config["families_test"]=="all":
+            if "mouse" in config["families_test"] or config["families_test"]=="all":
                 mus_dataset.train_mask = mus_mask[0]
                 mus_dataset.test_mask = mus_mask[1]
             else:
@@ -81,7 +86,7 @@ def run_trial(config=None):
             ]
 
             dog_mask, dog_fam_counts=dataset_split_by_components(G_dog, dog_dataset, config)
-            if config["families_test"]=="dog" or config["families_test"]=="all":
+            if "dog" in config["families_test"] or config["families_test"]=="all":
                 dog_dataset.train_mask = dog_mask[0]
                 dog_dataset.test_mask = dog_mask[1]
             else:
@@ -93,34 +98,50 @@ def run_trial(config=None):
                 for node in G_dog.nodes()
             ]
 
-            dro_mask, dro_fam_counts=dataset_split_by_components(G_dro, dro_dataset, config)
-            if config["families_test"]=="dro" or config["families_test"]=="all":
-                dro_dataset.train_mask = dro_mask[0]
-                dro_dataset.test_mask = dro_mask[1]
-            else:
-                dro_dataset.train_mask = torch.ones(dro_dataset.num_nodes, dtype=torch.bool)
-                dro_dataset.test_mask = torch.zeros(dro_dataset.num_nodes, dtype=torch.bool)
+            if config["species"]!="mus_dog":
+                dro_mask, dro_fam_counts=dataset_split_by_components(G_dro, dro_dataset, config)
+                if "dro" in config["families_test"] or config["families_test"]=="all":
+                    dro_dataset.train_mask = dro_mask[0]
+                    dro_dataset.test_mask = dro_mask[1]
+                else:
+                    dro_dataset.train_mask = torch.ones(dro_dataset.num_nodes, dtype=torch.bool)
+                    dro_dataset.test_mask = torch.zeros(dro_dataset.num_nodes, dtype=torch.bool)
 
-            dro_dataset._node_families = [
-                G_dro.nodes[node].get("lst_dfam_repeats", [])
-                for node in G_dro.nodes()
-            ]
+                dro_dataset._node_families = [
+                    G_dro.nodes[node].get("lst_dfam_repeats", [])
+                    for node in G_dro.nodes()
+                ]
 
             if config["families_test"]=="all":
                 fam_counts={"mouse": mus_fam_counts, "dog": dog_fam_counts, "dro": dro_fam_counts}
-            else:
-                fam_counts=mus_fam_counts if config["families_test"]=="mouse" else (dog_fam_counts if config["families_test"]=="dog" else dro_fam_counts)
+            elif config["families_test"]=="mus_dog":
+                fam_counts={"mouse": mus_fam_counts, "dog": dog_fam_counts}
+            elif config["families_test"]=="mouse":
+                fam_counts=mus_fam_counts
+            elif config["families_test"]=="dog":
+                fam_counts=dog_fam_counts
+            elif config["families_test"]=="dro":
+                fam_counts=dro_fam_counts
 
-        datasets=[mus_dataset, dog_dataset, dro_dataset]
-        Gs=[G_mus, G_dog, G_dro]
+        if config["species"]=="mus_dog":
+            datasets=[mus_dataset, dog_dataset]
+            Gs=[G_mus, G_dog]
+        else: 
+            datasets=[mus_dataset, dog_dataset, dro_dataset]
+            Gs=[G_mus, G_dog, G_dro]
 
         dataset=merge_pyg_datasets(datasets)
 
-        if config["partition"]=="families":
+        if config["partition"]=="families" and config["species"]=="all":
             dataset._node_families = (
                 mus_dataset._node_families
                 + dog_dataset._node_families
                 + dro_dataset._node_families
+            )
+        elif config["partition"]=="families" and config["species"]=="mus_dog":
+            dataset._node_families = (
+                mus_dataset._node_families
+                + dog_dataset._node_families
             )
 
     if config["features_subset"]=="none":
@@ -153,12 +174,12 @@ def run_trial(config=None):
     elif config["features_subset"]=="none":
         dataset.feature_names = ["constant_feature"]
 
-    if config["partition"]=="families" and config["species"]!="all":
+    if config["partition"]=="families" and config["species"] not in ["all", "mus_dog"]:
         mask, fam_counts=dataset_split_by_components(G, dataset, config)
         dataset.train_mask = mask[0]
         dataset.test_mask = mask[1]
         dataset._node_families = [G.nodes[node].get("lst_dfam_repeats", []) for node in G.nodes()]
-    elif config["partition"]=="single_family" and config["species"]!="all":
+    elif config["partition"]=="single_family" and config["species"] not in ["all", "mus_dog"]:
         dataset=dataset_choose_single_family(G, dataset, config["single_family_fam"])
     elif config["partition"]=="random":
         train_mask, test_mask = random_dataset_split(dataset, config)
